@@ -1,0 +1,11 @@
+fastapi
+uvicorn[standard]
+sqlalchemy>=2.0
+asyncmy
+redis>=5.0
+pydantic-settings
+python-dotenv
+httpx
+alembic
+pymysql
+PyJWT
