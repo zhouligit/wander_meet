@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     app_debug: bool = True
     app_host: str = "0.0.0.0"
     app_port: int = 8000
+    app_cors_origins: str = "http://localhost:5173,http://localhost:5174"
 
     mysql_host: str = "127.0.0.1"
     mysql_port: int = 3306
@@ -38,6 +39,12 @@ class Settings(BaseSettings):
             f"redis://{password_part}{self.redis_host}:"
             f"{self.redis_port}/{self.redis_db}"
         )
+
+    @property
+    def cors_origins(self) -> list[str]:
+        if not self.app_cors_origins:
+            return []
+        return [origin.strip() for origin in self.app_cors_origins.split(",") if origin.strip()]
 
 
 @lru_cache
