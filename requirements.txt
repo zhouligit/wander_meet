@@ -9,3 +9,4 @@ httpx
 alembic
 pymysql
 PyJWT
+cryptography
