@@ -1,5 +1,3 @@
-import random
-
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -20,11 +18,12 @@ from app.schemas.common import APIResponse
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 SMS_CODE_TTL_SECONDS = 1800
+FIXED_SMS_CODE = "123456"
 
 
 @router.post("/sms/send")
 async def send_sms_code(payload: SendSMSCodeRequest) -> APIResponse[SendSMSCodeData]:
-    code = f"{random.randint(100000, 999999)}"
+    code = FIXED_SMS_CODE
     redis_key = f"wm:sms:{payload.scene}:{payload.phone}"
     await redis_client.set(redis_key, code, ex=SMS_CODE_TTL_SECONDS)
     # v0.1 demo env: write code to logs/redis only; integrate SMS provider later.
