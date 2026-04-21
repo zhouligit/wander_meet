@@ -7,7 +7,7 @@ class SendSMSCodeRequest(BaseModel):
 
 
 class SendSMSCodeData(BaseModel):
-    expireInSeconds: int = 300
+    expireInSeconds: int = 1800
 
 
 class SMSLoginRequest(BaseModel):

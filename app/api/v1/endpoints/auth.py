@@ -19,15 +19,16 @@ from app.schemas.auth import (
 from app.schemas.common import APIResponse
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+SMS_CODE_TTL_SECONDS = 1800
 
 
 @router.post("/sms/send")
 async def send_sms_code(payload: SendSMSCodeRequest) -> APIResponse[SendSMSCodeData]:
     code = f"{random.randint(100000, 999999)}"
     redis_key = f"wm:sms:{payload.scene}:{payload.phone}"
-    await redis_client.set(redis_key, code, ex=300)
+    await redis_client.set(redis_key, code, ex=SMS_CODE_TTL_SECONDS)
     # v0.1 demo env: write code to logs/redis only; integrate SMS provider later.
-    return APIResponse(data=SendSMSCodeData(expireInSeconds=300))
+    return APIResponse(data=SendSMSCodeData(expireInSeconds=SMS_CODE_TTL_SECONDS))
 
 
 @router.post("/sms/login")
