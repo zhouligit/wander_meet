@@ -231,18 +231,33 @@ async def enroll_activity(
     if int(joined_count or 0) >= activity.max_members:
         raise HTTPException(status_code=409, detail="Activity is full")
 
-    enrollment = ActivityEnrollment(
-        activity_id=activity.id,
-        user_id=current_user.id,
-        status="joined",
+    existing = await db.scalar(
+        select(ActivityEnrollment).where(
+            ActivityEnrollment.activity_id == activity.id,
+            ActivityEnrollment.user_id == current_user.id,
+        )
     )
-    db.add(enrollment)
-    try:
+    if existing:
+        if existing.status == "joined":
+            raise HTTPException(status_code=409, detail="Already enrolled")
+        # Re-join after a previous cancellation (idempotent re-enroll behavior).
+        existing.status = "joined"
         await db.commit()
-    except IntegrityError as exc:
-        await db.rollback()
-        raise HTTPException(status_code=409, detail="Already enrolled") from exc
-    await db.refresh(enrollment)
+        await db.refresh(existing)
+        enrollment = existing
+    else:
+        enrollment = ActivityEnrollment(
+            activity_id=activity.id,
+            user_id=current_user.id,
+            status="joined",
+        )
+        db.add(enrollment)
+        try:
+            await db.commit()
+        except IntegrityError as exc:
+            await db.rollback()
+            raise HTTPException(status_code=409, detail="Already enrolled") from exc
+        await db.refresh(enrollment)
 
     return APIResponse(
         data=EnrollmentData(enrollmentId=f"enr_{enrollment.id}", status=enrollment.status)
