@@ -255,13 +255,36 @@
 
 ---
 
-## 12. ER 关系摘要
+## 12. `user_chat_reads` 群聊已读游标
+
+用于“我加入的群列表”接口计算未读数，记录用户在某活动群的最后已读消息 ID。
+
+| 字段 | 类型 | 约束 | 说明 |
+| --- | --- | --- | --- |
+| id | BIGINT | PK | |
+| user_id | BIGINT | FK, NOT NULL | 用户 ID |
+| activity_id | BIGINT | FK, NOT NULL | 活动（群）ID |
+| last_read_message_id | BIGINT | NOT NULL, DEFAULT 0 | 该用户在该群最后已读消息 ID |
+| updated_at | TIMESTAMPTZ | NOT NULL | 更新时间 |
+| created_at | TIMESTAMPTZ | NOT NULL | 创建时间 |
+
+索引：
+
+- `uniq_user_chat_read` UNIQUE (`user_id`, `activity_id`)
+- `idx_user_chat_reads_user` (`user_id`)
+- `idx_user_chat_reads_activity` (`activity_id`)
+
+---
+
+## 13. ER 关系摘要
 
 ```
 users 1 --- * activities (organizer)
 users 1 --- * activity_enrollments
 activities 1 --- * activity_enrollments
 activities 1 --- * activity_messages
+users 1 --- * user_chat_reads
+activities 1 --- * user_chat_reads
 users 1 --- * user_blocks (blocker / blocked)
 users 1 --- * reports (reporter)
 users 1 --- * notifications
@@ -270,7 +293,7 @@ users 1 --- 1 user_verifications（或 1 对多版本）
 
 ---
 
-## 13. 与 PRD 能力映射
+## 14. 与 PRD 能力映射
 
 | PRD 能力 | 主要表 |
 | --- | --- |
@@ -280,6 +303,7 @@ users 1 --- 1 user_verifications（或 1 对多版本）
 | 活动流与筛选 | activities |
 | 报名 | activity_enrollments |
 | 活动群聊 | activity_messages |
+| 群列表与未读数 | user_chat_reads、activity_messages、activity_enrollments |
 | 举报/拉黑/封禁 | reports、user_blocks、users.status |
 | 通知 | notifications |
 | 审核活动 | activities.activity_status、admin_audit_logs |

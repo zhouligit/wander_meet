@@ -1121,6 +1121,109 @@ Authorization: Bearer wm_at_xxx
 
 ---
 
+## 29.1 我加入的群聊列表
+
+### `GET /api/v1/wm/me/chats`
+
+### 请求参数
+
+| 参数 | 位置 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- | --- |
+| page | query | number | 否 | 页码，默认 1 |
+| pageSize | query | number | 否 | 每页条数，默认 20，最大 50 |
+
+### 请求示例
+
+```
+curl "http://127.0.0.1:8001/api/v1/wm/me/chats?page=1&pageSize=20" \
+  -H "Authorization: Bearer <TOKEN>"
+```
+
+### 响应 `data`
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| list | array | 群聊列表（按最近消息时间倒序） |
+| total | number | 总条数 |
+| page | number | 当前页 |
+| pageSize | number | 每页条数 |
+
+### `list[]` 元素
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| activityId | string | 活动 ID（群 ID） |
+| title | string | 活动标题 |
+| activityStatus | string | 活动状态 |
+| memberCount | number | 当前成员数（joined） |
+| lastMessage | string \| null | 最后一条消息摘要（图片为 `[图片]`） |
+| lastMessageAt | string \| null | 最后一条消息时间 |
+| unreadCount | number | 未读消息数 |
+
+### 响应示例
+
+```json
+{
+  "code": 0,
+  "message": "ok",
+  "data": {
+    "list": [
+      {
+        "activityId": "act_20001",
+        "title": "周五晚国贸咖啡局",
+        "activityStatus": "published",
+        "memberCount": 6,
+        "lastMessage": "我准时到。",
+        "lastMessageAt": "2026-04-22T10:30:00+08:00",
+        "unreadCount": 2
+      }
+    ],
+    "total": 1,
+    "page": 1,
+    "pageSize": 20
+  }
+}
+```
+
+---
+
+## 29.2 标记群聊已读
+
+### `PATCH /api/v1/wm/me/chats/:activityId/read`
+
+### 路径参数
+
+| 参数 | 类型 | 说明 |
+| --- | --- | --- |
+| activityId | string | 活动 ID（如 `act_1`） |
+
+### 请求示例
+
+```
+curl -X PATCH "http://127.0.0.1:8001/api/v1/wm/me/chats/act_1/read" \
+  -H "Authorization: Bearer <TOKEN>"
+```
+
+### 响应 `data`
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| updatedCount | number | 更新条数，正常为 1 |
+
+### 响应示例
+
+```json
+{
+  "code": 0,
+  "message": "ok",
+  "data": {
+    "updatedCount": 1
+  }
+}
+```
+
+---
+
 ## 管理端 API（运营 / 审核，独立鉴权）
 
 管理端建议使用独立 `Admin-Token` 或服务端账号，以下为示例路径。
