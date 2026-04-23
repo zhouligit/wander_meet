@@ -1,3 +1,5 @@
+from datetime import UTC, datetime
+
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -6,12 +8,16 @@ from app.api.deps import get_current_user
 from app.db.session import get_db_session
 from app.models.activity import Activity
 from app.models.activity_enrollment import ActivityEnrollment
+from app.models.activity_message import ActivityMessage
 from app.models.user import User
+from app.models.user_chat_read import UserChatRead
 from app.schemas.common import APIResponse
 from app.schemas.me import (
     MeData,
     MyActivitiesData,
     MyActivitiesItem,
+    MyChatsData,
+    MyChatItem,
     PremiumData,
     UpdateMeRequest,
     VerificationSummary,
@@ -129,6 +135,145 @@ async def my_activities(
 @router.get("/premium")
 async def my_premium(_: User = Depends(get_current_user)) -> APIResponse[PremiumData]:
     return APIResponse(data=PremiumData(enabled=False, sku=[]))
+
+
+@router.get("/chats")
+async def my_chats(
+    page: int = Query(1, ge=1),
+    pageSize: int = Query(20, ge=1, le=50),
+    db: AsyncSession = Depends(get_db_session),
+    current_user: User = Depends(get_current_user),
+) -> APIResponse[MyChatsData]:
+    joined_activity_ids_subq = (
+        select(ActivityEnrollment.activity_id)
+        .where(
+            ActivityEnrollment.user_id == current_user.id,
+            ActivityEnrollment.status == "joined",
+        )
+        .subquery()
+    )
+
+    total = (
+        await db.execute(
+            select(func.count(Activity.id)).where(
+                Activity.id.in_(select(joined_activity_ids_subq.c.activity_id))
+            )
+        )
+    ).scalar_one()
+
+    activities = (
+        (
+            await db.execute(
+                select(Activity)
+                .where(Activity.id.in_(select(joined_activity_ids_subq.c.activity_id)))
+                .order_by(Activity.updated_at.desc())
+                .offset((page - 1) * pageSize)
+                .limit(pageSize)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    if not activities:
+        return APIResponse(data=MyChatsData(list=[], total=0, page=page, pageSize=pageSize))
+
+    activity_ids = [a.id for a in activities]
+    member_rows = await db.execute(
+        select(ActivityEnrollment.activity_id, func.count(ActivityEnrollment.id))
+        .where(
+            ActivityEnrollment.activity_id.in_(activity_ids),
+            ActivityEnrollment.status == "joined",
+        )
+        .group_by(ActivityEnrollment.activity_id)
+    )
+    member_count_map = {activity_id: cnt for activity_id, cnt in member_rows.all()}
+
+    read_rows = await db.execute(
+        select(UserChatRead).where(
+            UserChatRead.user_id == current_user.id, UserChatRead.activity_id.in_(activity_ids)
+        )
+    )
+    read_map = {row.activity_id: row.last_read_message_id for row in read_rows.scalars().all()}
+
+    chat_items: list[MyChatItem] = []
+    for activity in activities:
+        last_msg = await db.scalar(
+            select(ActivityMessage)
+            .where(ActivityMessage.activity_id == activity.id)
+            .order_by(ActivityMessage.id.desc())
+            .limit(1)
+        )
+        last_read_id = read_map.get(activity.id, 0)
+        unread_count = (
+            await db.execute(
+                select(func.count(ActivityMessage.id)).where(
+                    ActivityMessage.activity_id == activity.id,
+                    ActivityMessage.id > last_read_id,
+                )
+            )
+        ).scalar_one()
+
+        if last_msg is None:
+            last_message = None
+            last_message_at = None
+        elif last_msg.msg_type == "text":
+            last_message = last_msg.text_content or ""
+            last_message_at = last_msg.created_at
+        else:
+            last_message = "[图片]"
+            last_message_at = last_msg.created_at
+
+        chat_items.append(
+            MyChatItem(
+                activityId=f"act_{activity.id}",
+                title=activity.title,
+                activityStatus=activity.activity_status,
+                memberCount=int(member_count_map.get(activity.id, 0)),
+                lastMessage=last_message,
+                lastMessageAt=last_message_at,
+                unreadCount=int(unread_count),
+            )
+        )
+
+    chat_items.sort(
+        key=lambda item: item.lastMessageAt or datetime(1970, 1, 1, tzinfo=UTC), reverse=True
+    )
+    return APIResponse(data=MyChatsData(list=chat_items, total=total, page=page, pageSize=pageSize))
+
+
+@router.patch("/chats/{activity_id}/read")
+async def mark_chat_read(
+    activity_id: str,
+    db: AsyncSession = Depends(get_db_session),
+    current_user: User = Depends(get_current_user),
+) -> APIResponse[dict[str, int]]:
+    if activity_id.startswith("act_"):
+        activity_id = activity_id[4:]
+    if not activity_id.isdigit():
+        return APIResponse(code=400, message="invalid activity id", data={"updatedCount": 0})
+    activity_pk = int(activity_id)
+
+    last_msg_id = await db.scalar(
+        select(func.max(ActivityMessage.id)).where(ActivityMessage.activity_id == activity_pk)
+    )
+    last_msg_id = int(last_msg_id or 0)
+
+    row = await db.scalar(
+        select(UserChatRead).where(
+            UserChatRead.user_id == current_user.id, UserChatRead.activity_id == activity_pk
+        )
+    )
+    if row:
+        row.last_read_message_id = last_msg_id
+    else:
+        row = UserChatRead(
+            user_id=current_user.id,
+            activity_id=activity_pk,
+            last_read_message_id=last_msg_id,
+        )
+        db.add(row)
+    await db.commit()
+    return APIResponse(data={"updatedCount": 1})
 
 
 @router.post("/avatar/upload-url")

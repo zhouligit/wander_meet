@@ -49,6 +49,8 @@
 - `GET /api/v1/wm/me`
 - `PATCH /api/v1/wm/me`
 - `GET /api/v1/wm/me/activities?role=organized|joined`
+- `GET /api/v1/wm/me/chats?page=1&pageSize=20`
+- `PATCH /api/v1/wm/me/chats/{activityId}/read`
 - `GET /api/v1/wm/me/premium`
 - `POST /api/v1/wm/me/avatar/upload-url`
 - `GET /api/v1/wm/me/verification`

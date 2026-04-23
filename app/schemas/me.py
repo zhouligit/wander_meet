@@ -43,3 +43,20 @@ class MyActivitiesData(BaseModel):
 class PremiumData(BaseModel):
     enabled: bool
     sku: list[str]
+
+
+class MyChatItem(BaseModel):
+    activityId: str
+    title: str
+    activityStatus: str
+    memberCount: int
+    lastMessage: str | None = None
+    lastMessageAt: datetime | None = None
+    unreadCount: int
+
+
+class MyChatsData(BaseModel):
+    list: list[MyChatItem]
+    total: int
+    page: int
+    pageSize: int

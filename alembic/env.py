@@ -12,6 +12,7 @@ from app.models import (  # noqa: F401
     notification,
     report,
     user,
+    user_chat_read,
     user_block,
     user_verification,
 )
