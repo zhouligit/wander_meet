@@ -1,7 +1,8 @@
 from datetime import UTC, datetime
+import math
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import func, select
+from sqlalchemy import Float, cast, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -18,6 +19,8 @@ from app.schemas.activity import (
     ActivityDetailData,
     ActivityDetailOrganizer,
     ActivityListData,
+    NearbyActivityListData,
+    NearbySearchCenter,
     ChatMessageItem,
     ChatMessagesData,
     ChatMessageSender,
@@ -94,6 +97,102 @@ async def list_activities(
 
     return APIResponse(
         data=ActivityListData(list=cards, total=total, page=page, pageSize=pageSize)
+    )
+
+
+@router.get("/nearby")
+async def list_nearby_activities(
+    lat: float = Query(..., ge=-90, le=90),
+    lng: float = Query(..., ge=-180, le=180),
+    radiusKm: float = Query(5, ge=0.5, le=20),
+    cityCode: str | None = Query(None),
+    dateRange: str = Query("all"),
+    categoryId: str | None = Query(None),
+    sortBy: str = Query("distance"),
+    page: int = Query(1, ge=1),
+    pageSize: int = Query(20, ge=1, le=50),
+    db: AsyncSession = Depends(get_db_session),
+) -> APIResponse[NearbyActivityListData]:
+    if sortBy not in {"distance", "startAt"}:
+        raise HTTPException(status_code=400, detail="sortBy must be distance or startAt")
+
+    lat_delta = radiusKm / 111.32
+    lng_denominator = 111.32 * max(math.cos(math.radians(lat)), 0.0001)
+    lng_delta = radiusKm / lng_denominator
+
+    min_lat = lat - lat_delta
+    max_lat = lat + lat_delta
+    min_lng = lng - lng_delta
+    max_lng = lng + lng_delta
+
+    distance_expr = _distance_meters_expr(lat=lat, lng=lng)
+    filters = [
+        Activity.activity_status == "published",
+        cast(Activity.lat, Float) >= min_lat,
+        cast(Activity.lat, Float) <= max_lat,
+        cast(Activity.lng, Float) >= min_lng,
+        cast(Activity.lng, Float) <= max_lng,
+        distance_expr <= radiusKm * 1000,
+    ]
+    if cityCode:
+        filters.append(Activity.city_code == cityCode)
+    if categoryId:
+        filters.append(Activity.category_id == categoryId)
+    # v0.1: dateRange reserved, currently relies on startAt sorting.
+    _ = dateRange
+
+    total_stmt = select(func.count(Activity.id)).where(*filters)
+    total = (await db.execute(total_stmt)).scalar_one()
+
+    stmt = select(Activity, distance_expr.label("distance_meters")).where(*filters)
+    if sortBy == "startAt":
+        stmt = stmt.order_by(Activity.start_at.asc(), distance_expr.asc())
+    else:
+        stmt = stmt.order_by(distance_expr.asc(), Activity.start_at.asc())
+
+    rows = (await db.execute(stmt.offset((page - 1) * pageSize).limit(pageSize))).all()
+    activities = [row[0] for row in rows]
+    distance_map = {row[0].id: int(round(float(row[1]))) for row in rows}
+
+    activity_ids = [a.id for a in activities]
+    enrollment_map: dict[int, int] = {}
+    if activity_ids:
+        enrollment_rows = await db.execute(
+            select(ActivityEnrollment.activity_id, func.count(ActivityEnrollment.id))
+            .where(
+                ActivityEnrollment.activity_id.in_(activity_ids),
+                ActivityEnrollment.status == "joined",
+            )
+            .group_by(ActivityEnrollment.activity_id)
+        )
+        enrollment_map = {aid: count for aid, count in enrollment_rows.all()}
+
+    cards = [
+        ActivityCard(
+            activityId=f"act_{a.id}",
+            title=a.title,
+            startAt=a.start_at,
+            locationName=a.location_name,
+            lat=float(a.lat),
+            lng=float(a.lng),
+            distanceMeters=distance_map.get(a.id),
+            enrolledCount=enrollment_map.get(a.id, 0),
+            maxMembers=a.max_members,
+            categoryId=a.category_id,
+            activityStatus=a.activity_status,
+        )
+        for a in activities
+    ]
+
+    return APIResponse(
+        data=NearbyActivityListData(
+            list=cards,
+            total=total,
+            page=page,
+            pageSize=pageSize,
+            searchCenter=NearbySearchCenter(lat=lat, lng=lng),
+            radiusKm=radiusKm,
+        )
     )
 
 
@@ -538,4 +637,15 @@ async def _assert_member_or_organizer(
     )
     if not enrollment:
         raise HTTPException(status_code=403, detail="Only members can access activity chat")
+
+
+def _distance_meters_expr(lat: float, lng: float):
+    lat_col = cast(Activity.lat, Float)
+    lng_col = cast(Activity.lng, Float)
+    dlat = func.radians((lat_col - lat) / 2)
+    dlng = func.radians((lng_col - lng) / 2)
+    a = func.pow(func.sin(dlat), 2) + func.cos(func.radians(lat)) * func.cos(
+        func.radians(lat_col)
+    ) * func.pow(func.sin(dlng), 2)
+    return 6371000 * 2 * func.asin(func.sqrt(a))
 

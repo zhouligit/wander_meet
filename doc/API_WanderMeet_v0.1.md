@@ -1322,6 +1322,210 @@ curl -X PATCH "http://127.0.0.1:8001/api/v1/wm/me/chats/act_1/read" \
 
 ---
 
+## 37. 周边活动列表（按距离）
+
+### `GET /api/v1/wm/activities/nearby`
+
+### 请求参数
+
+| 参数 | 位置 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- | --- |
+| lat | query | number | 是 | 用户当前纬度（WGS84） |
+| lng | query | number | 是 | 用户当前经度（WGS84） |
+| radiusKm | query | number | 否 | 搜索半径（公里），默认 `5`，可选 `1` \| `3` \| `5` \| `10` \| `20` |
+| cityCode | query | string | 否 | 城市编码；不传时由坐标反查城市或不过滤 |
+| dateRange | query | string | 否 | `today` \| `tomorrow` \| `weekend` \| `all`（默认） |
+| categoryId | query | string | 否 | 活动类目 |
+| sortBy | query | string | 否 | `distance`（默认）\| `startAt` |
+| page | query | number | 否 | 页码，默认 `1` |
+| pageSize | query | number | 否 | 每页条数，默认 `20`，最大 `50` |
+
+### 请求参数示例（JSON）
+
+```json
+{
+  "lat": 39.9087,
+  "lng": 116.3975,
+  "radiusKm": 5,
+  "cityCode": "110000",
+  "dateRange": "all",
+  "categoryId": "citywalk",
+  "sortBy": "distance",
+  "page": 1,
+  "pageSize": 20
+}
+```
+
+### 请求示例
+
+```
+GET /api/v1/wm/activities/nearby?lat=39.9087&lng=116.3975&radiusKm=5&cityCode=110000&page=1&pageSize=20 HTTP/1.1
+Host: api.wandermeet.example.com
+Authorization: Bearer wm_at_xxx
+```
+
+### cURL 示例
+
+```bash
+curl "http://127.0.0.1:8001/api/v1/wm/activities/nearby?lat=39.9087&lng=116.3975&radiusKm=5&cityCode=110000&page=1&pageSize=20" \
+  -H "Authorization: Bearer <TOKEN>"
+```
+
+### 响应 `data`
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| list | array | 周边活动卡片列表 |
+| total | number | 命中总条数 |
+| page | number | 当前页 |
+| pageSize | number | 每页条数 |
+| searchCenter | object | 查询中心点 |
+| radiusKm | number | 本次查询半径（公里） |
+
+### `list[]` 元素（卡片）
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| activityId | string | 活动 ID |
+| title | string | 标题 |
+| startAt | string | 开始时间 |
+| locationName | string | 地点名称 |
+| lat | number | 活动纬度 |
+| lng | number | 活动经度 |
+| distanceMeters | number | 与用户中心点的距离（米） |
+| enrolledCount | number | 已报名人数 |
+| maxMembers | number | 人数上限 |
+| categoryId | string | 类目 |
+| activityStatus | string | `published` 等 |
+
+### 响应示例
+
+```json
+{
+  "code": 0,
+  "message": "ok",
+  "data": {
+    "list": [
+      {
+        "activityId": "act_20001",
+        "title": "晚饭后亮马河散步局",
+        "startAt": "2026-04-26T19:30:00+08:00",
+        "locationName": "亮马河国际风情水岸",
+        "lat": 39.9498,
+        "lng": 116.4603,
+        "distanceMeters": 2840,
+        "enrolledCount": 6,
+        "maxMembers": 10,
+        "categoryId": "citywalk",
+        "activityStatus": "published"
+      }
+    ],
+    "total": 18,
+    "page": 1,
+    "pageSize": 20,
+    "searchCenter": {
+      "lat": 39.9087,
+      "lng": 116.3975
+    },
+    "radiusKm": 5
+  }
+}
+```
+
+### SQL 方案（MySQL 8+，先粗筛再精算）
+
+#### 1) 索引建议
+
+```sql
+CREATE INDEX idx_activities_city_status_start
+ON activities (city_code, activity_status, start_at);
+
+CREATE INDEX idx_activities_lat_lng
+ON activities (lat, lng);
+```
+
+#### 2) 先做经纬度包围框（Bounding Box）粗筛
+
+```sql
+-- 输入参数:
+-- :lat, :lng, :radius_km
+-- :lat_delta = :radius_km / 111.32
+-- :lng_delta = :radius_km / (111.32 * COS(RADIANS(:lat)))
+-- :min_lat = :lat - :lat_delta
+-- :max_lat = :lat + :lat_delta
+-- :min_lng = :lng - :lng_delta
+-- :max_lng = :lng + :lng_delta
+```
+
+#### 3) 再用 Haversine 精确距离过滤和排序
+
+```sql
+SELECT
+  a.id,
+  a.title,
+  a.start_at,
+  a.location_name,
+  a.lat,
+  a.lng,
+  ROUND(
+    6371000 * 2 * ASIN(
+      SQRT(
+        POW(SIN(RADIANS((a.lat - :lat) / 2)), 2) +
+        COS(RADIANS(:lat)) * COS(RADIANS(a.lat)) *
+        POW(SIN(RADIANS((a.lng - :lng) / 2)), 2)
+      )
+    )
+  ) AS distance_meters
+FROM activities a
+WHERE a.activity_status = 'published'
+  AND (:city_code IS NULL OR a.city_code = :city_code)
+  AND a.lat BETWEEN :min_lat AND :max_lat
+  AND a.lng BETWEEN :min_lng AND :max_lng
+HAVING distance_meters <= :radius_km * 1000
+ORDER BY distance_meters ASC, a.start_at ASC
+LIMIT :limit OFFSET :offset;
+```
+
+#### 4) 分页 total 统计（同样过滤条件）
+
+```sql
+SELECT COUNT(1) AS total
+FROM (
+  SELECT a.id
+  FROM activities a
+  WHERE a.activity_status = 'published'
+    AND (:city_code IS NULL OR a.city_code = :city_code)
+    AND a.lat BETWEEN :min_lat AND :max_lat
+    AND a.lng BETWEEN :min_lng AND :max_lng
+    AND (
+      6371000 * 2 * ASIN(
+        SQRT(
+          POW(SIN(RADIANS((a.lat - :lat) / 2)), 2) +
+          COS(RADIANS(:lat)) * COS(RADIANS(a.lat)) *
+          POW(SIN(RADIANS((a.lng - :lng) / 2)), 2)
+        )
+      )
+    ) <= :radius_km * 1000
+) t;
+```
+
+### 5 公里 / 10 公里算法说明（服务端）
+
+1. 将用户坐标记为 `(lat, lng)`，地球半径取 `R = 6371000m`。  
+2. 根据半径 `radiusKm` 先计算包围框，减少参与精算的候选点。  
+3. 对候选活动计算 Haversine 距离：  
+   `d = 2R * asin(sqrt(sin^2((lat2-lat1)/2) + cos(lat1)*cos(lat2)*sin^2((lng2-lng1)/2)))`。  
+4. `radiusKm=5` 时过滤 `d <= 5000`；`radiusKm=10` 时过滤 `d <= 10000`。  
+5. 默认按 `distance_meters ASC` 排序；同距离再按 `start_at ASC`。  
+
+### 实现建议（与现有接口兼容）
+
+- 发现页保持现有 `GET /api/v1/wm/activities`（城市维度）。  
+- 新增 `GET /api/v1/wm/activities/nearby` 作为“附近”tab 专用。  
+- 前端距离筛选按钮可直接传 `radiusKm=1/3/5/10/20`，后端统一处理。  
+
+---
+
 ## 附录：常用错误码（示例）
 
 | code | 说明 |

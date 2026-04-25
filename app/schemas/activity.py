@@ -10,6 +10,7 @@ class ActivityCard(BaseModel):
     locationName: str
     lat: float
     lng: float
+    distanceMeters: int | None = None
     enrolledCount: int
     maxMembers: int
     categoryId: str
@@ -21,6 +22,20 @@ class ActivityListData(BaseModel):
     total: int
     page: int
     pageSize: int
+
+
+class NearbySearchCenter(BaseModel):
+    lat: float
+    lng: float
+
+
+class NearbyActivityListData(BaseModel):
+    list: list[ActivityCard]
+    total: int
+    page: int
+    pageSize: int
+    searchCenter: NearbySearchCenter
+    radiusKm: float
 
 
 class CreateActivityRequest(BaseModel):
