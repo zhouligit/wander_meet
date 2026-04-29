@@ -10,6 +10,7 @@ class User(Base):
     __tablename__ = "users"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    phone: Mapped[str | None] = mapped_column(String(20), nullable=True, index=True)
     phone_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
     nickname: Mapped[str] = mapped_column(String(32))
     avatar_url: Mapped[str | None] = mapped_column(String(512), nullable=True)

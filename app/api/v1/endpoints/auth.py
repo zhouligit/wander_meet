@@ -42,10 +42,14 @@ async def sms_login(
     phone_hash = hash_phone(payload.phone)
     user = await db.scalar(select(User).where(User.phone_hash == phone_hash))
     if not user:
-        user = User(phone_hash=phone_hash, nickname=f"旅人{payload.phone[-4:]}")
+        user = User(phone=payload.phone, phone_hash=phone_hash, nickname=f"旅人{payload.phone[-4:]}")
         db.add(user)
         await db.commit()
         await db.refresh(user)
+    elif not user.phone:
+        # Backfill plain phone for historical users after phone column rollout.
+        user.phone = payload.phone
+        await db.commit()
 
     access_token = create_access_token(user.id)
     response_data = SMSLoginData(
