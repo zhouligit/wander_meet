@@ -1,7 +1,8 @@
 from datetime import UTC, datetime
 import math
+import logging
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import Float, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -33,6 +34,7 @@ from app.schemas.activity import (
 from app.schemas.common import APIResponse
 
 router = APIRouter(prefix="/activities", tags=["activities"])
+logger = logging.getLogger(__name__)
 
 
 @router.get("")
@@ -102,6 +104,7 @@ async def list_activities(
 
 @router.get("/nearby")
 async def list_nearby_activities(
+    request: Request,
     lat: float = Query(..., ge=-90, le=90),
     lng: float = Query(..., ge=-180, le=180),
     radiusKm: float = Query(5, ge=0.5, le=20),
@@ -201,6 +204,17 @@ async def list_nearby_activities(
         )
         for a in activities
     ]
+    logger.info(
+        "nearby_activities user_id=%s request_id=%s city=%s radius_km=%.2f page=%s page_size=%s total=%s returned=%s",
+        getattr(request.state, "user_id", None),
+        getattr(request.state, "request_id", ""),
+        cityCode,
+        radiusKm,
+        page,
+        pageSize,
+        total,
+        len(cards),
+    )
 
     return APIResponse(
         data=NearbyActivityListData(
@@ -269,6 +283,7 @@ async def get_activity_detail(
 
 @router.post("")
 async def create_activity(
+    request: Request,
     payload: CreateActivityRequest,
     db: AsyncSession = Depends(get_db_session),
     current_user: User = Depends(get_current_user),
@@ -323,11 +338,20 @@ async def create_activity(
         enrolledCount=0,
         myEnrollment=None,
     )
+    logger.info(
+        "create_activity user_id=%s request_id=%s activity_id=%s city=%s category=%s",
+        current_user.id,
+        getattr(request.state, "request_id", ""),
+        activity.id,
+        activity.city_code,
+        activity.category_id,
+    )
     return APIResponse(data=data)
 
 
 @router.post("/{activity_id}/enrollments")
 async def enroll_activity(
+    request: Request,
     activity_id: str,
     db: AsyncSession = Depends(get_db_session),
     current_user: User = Depends(get_current_user),
@@ -376,6 +400,13 @@ async def enroll_activity(
             raise HTTPException(status_code=409, detail="Already enrolled") from exc
         await db.refresh(enrollment)
 
+    logger.info(
+        "enroll_activity user_id=%s request_id=%s activity_id=%s enrollment_id=%s",
+        current_user.id,
+        getattr(request.state, "request_id", ""),
+        activity.id,
+        enrollment.id,
+    )
     return APIResponse(
         data=EnrollmentData(enrollmentId=f"enr_{enrollment.id}", status=enrollment.status)
     )
@@ -458,6 +489,7 @@ async def update_activity(
 
 @router.post("/{activity_id}/cancel")
 async def cancel_activity(
+    request: Request,
     activity_id: str,
     reason: str | None = None,
     db: AsyncSession = Depends(get_db_session),
@@ -476,6 +508,13 @@ async def cancel_activity(
     if reason:
         activity.description = f"{activity.description}\n\n[取消原因] {reason}"
     await db.commit()
+    logger.info(
+        "cancel_activity user_id=%s request_id=%s activity_id=%s reason=%s",
+        current_user.id,
+        getattr(request.state, "request_id", ""),
+        activity.id,
+        bool(reason),
+    )
 
     return APIResponse(
         data={

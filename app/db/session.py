@@ -10,7 +10,7 @@ settings = get_settings()
 engine = create_async_engine(
     settings.sqlalchemy_database_uri,
     pool_pre_ping=True,
-    echo=settings.app_debug,
+    echo=settings.sql_echo,
 )
 SessionLocal = async_sessionmaker(
     bind=engine,

@@ -1,4 +1,4 @@
-from fastapi import Depends, HTTPException
+from fastapi import Depends, HTTPException, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -11,6 +11,7 @@ bearer_scheme = HTTPBearer(auto_error=True)
 
 
 async def get_current_user(
+    request: Request,
     credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
     db: AsyncSession = Depends(get_db_session),
 ) -> User:
@@ -26,6 +27,7 @@ async def get_current_user(
         raise HTTPException(status_code=401, detail="User not found")
     if user.status == "banned":
         raise HTTPException(status_code=403, detail="User is banned")
+    request.state.user_id = user.id
     return user
 
 

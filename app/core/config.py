@@ -9,9 +9,11 @@ class Settings(BaseSettings):
     app_name: str = "WanderMeet API"
     app_env: str = "dev"
     app_debug: bool = True
+    app_log_slow_ms: int = 300
     app_host: str = "0.0.0.0"
     app_port: int = 8000
     app_cors_origins: str = "http://localhost:5173,http://localhost:5174"
+    sqlalchemy_echo: bool | None = None
 
     mysql_host: str = "127.0.0.1"
     mysql_port: int = 3306
@@ -45,6 +47,12 @@ class Settings(BaseSettings):
         if not self.app_cors_origins:
             return []
         return [origin.strip() for origin in self.app_cors_origins.split(",") if origin.strip()]
+
+    @property
+    def sql_echo(self) -> bool:
+        if self.sqlalchemy_echo is not None:
+            return self.sqlalchemy_echo
+        return self.app_debug and self.app_env.lower() != "prod"
 
 
 @lru_cache
