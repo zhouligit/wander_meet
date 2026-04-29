@@ -1,7 +1,7 @@
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user
@@ -88,22 +88,14 @@ async def mark_all_read(
     db: AsyncSession = Depends(get_db_session),
     current_user: User = Depends(get_current_user),
 ) -> APIResponse[NotificationReadAllData]:
-    rows = (
-        (
-            await db.execute(
-                select(Notification).where(
-                    Notification.user_id == current_user.id, Notification.read_at.is_(None)
-                )
-            )
-        )
-        .scalars()
-        .all()
-    )
     now = datetime.now(UTC)
-    for row in rows:
-        row.read_at = now
+    result = await db.execute(
+        update(Notification)
+        .where(Notification.user_id == current_user.id, Notification.read_at.is_(None))
+        .values(read_at=now)
+    )
     await db.commit()
-    return APIResponse(data=NotificationReadAllData(updatedCount=len(rows)))
+    return APIResponse(data=NotificationReadAllData(updatedCount=int(result.rowcount or 0)))
 
 
 def _parse_notification_id(notification_id: str) -> int:

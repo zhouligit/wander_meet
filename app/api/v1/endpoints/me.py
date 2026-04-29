@@ -1,7 +1,7 @@
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user
@@ -86,24 +86,24 @@ async def my_activities(
             .all()
         )
     else:
-        activity_ids_subq = (
-            select(ActivityEnrollment.activity_id)
-            .where(
-                ActivityEnrollment.user_id == current_user.id,
-                ActivityEnrollment.status == "joined",
-            )
-            .subquery()
+        joined_filter = and_(
+            ActivityEnrollment.user_id == current_user.id,
+            ActivityEnrollment.status == "joined",
         )
         total = (
             await db.execute(
-                select(func.count(Activity.id)).where(Activity.id.in_(select(activity_ids_subq.c.activity_id)))
+                select(func.count(Activity.id))
+                .select_from(Activity)
+                .join(ActivityEnrollment, ActivityEnrollment.activity_id == Activity.id)
+                .where(joined_filter)
             )
         ).scalar_one()
         rows = (
             (
                 await db.execute(
                     select(Activity)
-                    .where(Activity.id.in_(select(activity_ids_subq.c.activity_id)))
+                    .join(ActivityEnrollment, ActivityEnrollment.activity_id == Activity.id)
+                    .where(joined_filter)
                     .order_by(Activity.start_at.desc())
                     .offset((page - 1) * pageSize)
                     .limit(pageSize)
@@ -188,30 +188,41 @@ async def my_chats(
     )
     member_count_map = {activity_id: cnt for activity_id, cnt in member_rows.all()}
 
-    read_rows = await db.execute(
-        select(UserChatRead).where(
-            UserChatRead.user_id == current_user.id, UserChatRead.activity_id.in_(activity_ids)
+    latest_msg_id_subq = (
+        select(
+            ActivityMessage.activity_id.label("activity_id"),
+            func.max(ActivityMessage.id).label("last_message_id"),
         )
+        .where(ActivityMessage.activity_id.in_(activity_ids))
+        .group_by(ActivityMessage.activity_id)
+        .subquery()
     )
-    read_map = {row.activity_id: row.last_read_message_id for row in read_rows.scalars().all()}
+    latest_rows = await db.execute(
+        select(ActivityMessage)
+        .join(latest_msg_id_subq, ActivityMessage.id == latest_msg_id_subq.c.last_message_id)
+    )
+    latest_message_map = {row.activity_id: row for row in latest_rows.scalars().all()}
+
+    unread_rows = await db.execute(
+        select(ActivityMessage.activity_id, func.count(ActivityMessage.id))
+        .outerjoin(
+            UserChatRead,
+            and_(
+                UserChatRead.activity_id == ActivityMessage.activity_id,
+                UserChatRead.user_id == current_user.id,
+            ),
+        )
+        .where(
+            ActivityMessage.activity_id.in_(activity_ids),
+            ActivityMessage.id > func.coalesce(UserChatRead.last_read_message_id, 0),
+        )
+        .group_by(ActivityMessage.activity_id)
+    )
+    unread_map = {activity_id: count for activity_id, count in unread_rows.all()}
 
     chat_items: list[MyChatItem] = []
     for activity in activities:
-        last_msg = await db.scalar(
-            select(ActivityMessage)
-            .where(ActivityMessage.activity_id == activity.id)
-            .order_by(ActivityMessage.id.desc())
-            .limit(1)
-        )
-        last_read_id = read_map.get(activity.id, 0)
-        unread_count = (
-            await db.execute(
-                select(func.count(ActivityMessage.id)).where(
-                    ActivityMessage.activity_id == activity.id,
-                    ActivityMessage.id > last_read_id,
-                )
-            )
-        ).scalar_one()
+        last_msg = latest_message_map.get(activity.id)
 
         if last_msg is None:
             last_message = None
@@ -231,7 +242,7 @@ async def my_chats(
                 memberCount=int(member_count_map.get(activity.id, 0)),
                 lastMessage=last_message,
                 lastMessageAt=last_message_at,
-                unreadCount=int(unread_count),
+                unreadCount=int(unread_map.get(activity.id, 0)),
             )
         )
 

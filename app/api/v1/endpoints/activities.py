@@ -2,7 +2,7 @@ from datetime import UTC, datetime
 import math
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import Float, cast, func, select
+from sqlalchemy import Float, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -126,29 +126,47 @@ async def list_nearby_activities(
     max_lng = lng + lng_delta
 
     distance_expr = _distance_meters_expr(lat=lat, lng=lng)
-    filters = [
+    base_filters = [
         Activity.activity_status == "published",
-        cast(Activity.lat, Float) >= min_lat,
-        cast(Activity.lat, Float) <= max_lat,
-        cast(Activity.lng, Float) >= min_lng,
-        cast(Activity.lng, Float) <= max_lng,
-        distance_expr <= radiusKm * 1000,
+        Activity.lat >= min_lat,
+        Activity.lat <= max_lat,
+        Activity.lng >= min_lng,
+        Activity.lng <= max_lng,
     ]
     if cityCode:
-        filters.append(Activity.city_code == cityCode)
+        base_filters.append(Activity.city_code == cityCode)
     if categoryId:
-        filters.append(Activity.category_id == categoryId)
+        base_filters.append(Activity.category_id == categoryId)
     # v0.1: dateRange reserved, currently relies on startAt sorting.
     _ = dateRange
 
-    total_stmt = select(func.count(Activity.id)).where(*filters)
+    nearby_subq = (
+        select(
+            Activity.id.label("activity_id"),
+            distance_expr.label("distance_meters"),
+        )
+        .where(*base_filters)
+        .subquery()
+    )
+
+    distance_limit = radiusKm * 1000
+    total_stmt = (
+        select(func.count(Activity.id))
+        .select_from(Activity)
+        .join(nearby_subq, nearby_subq.c.activity_id == Activity.id)
+        .where(nearby_subq.c.distance_meters <= distance_limit)
+    )
     total = (await db.execute(total_stmt)).scalar_one()
 
-    stmt = select(Activity, distance_expr.label("distance_meters")).where(*filters)
+    stmt = (
+        select(Activity, nearby_subq.c.distance_meters)
+        .join(nearby_subq, nearby_subq.c.activity_id == Activity.id)
+        .where(nearby_subq.c.distance_meters <= distance_limit)
+    )
     if sortBy == "startAt":
-        stmt = stmt.order_by(Activity.start_at.asc(), distance_expr.asc())
+        stmt = stmt.order_by(Activity.start_at.asc(), nearby_subq.c.distance_meters.asc())
     else:
-        stmt = stmt.order_by(distance_expr.asc(), Activity.start_at.asc())
+        stmt = stmt.order_by(nearby_subq.c.distance_meters.asc(), Activity.start_at.asc())
 
     rows = (await db.execute(stmt.offset((page - 1) * pageSize).limit(pageSize))).all()
     activities = [row[0] for row in rows]
@@ -470,6 +488,8 @@ async def cancel_activity(
 @router.get("/{activity_id}/members")
 async def activity_members(
     activity_id: str,
+    page: int = Query(1, ge=1),
+    pageSize: int = Query(20, ge=1, le=100),
     db: AsyncSession = Depends(get_db_session),
     current_user: User = Depends(get_current_user),
 ) -> APIResponse[ActivityMembersData]:
@@ -496,6 +516,8 @@ async def activity_members(
             ActivityEnrollment.status == "joined",
         )
         .order_by(ActivityEnrollment.created_at.asc())
+        .offset((page - 1) * pageSize)
+        .limit(pageSize)
     )
     members = [
         ActivityMemberItem(
