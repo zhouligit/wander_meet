@@ -18,12 +18,40 @@ from app.schemas.me import (
     MyActivitiesItem,
     MyChatsData,
     MyChatItem,
+    MyStatsData,
     PremiumData,
     UpdateMeRequest,
     VerificationSummary,
 )
 
 router = APIRouter(prefix="/me", tags=["me"])
+
+EPOCH_UTC = datetime(1970, 1, 1, tzinfo=UTC)
+
+
+@router.get("/stats")
+async def my_stats(
+    db: AsyncSession = Depends(get_db_session),
+    current_user: User = Depends(get_current_user),
+) -> APIResponse[MyStatsData]:
+    organized = await db.scalar(
+        select(func.count(Activity.id)).where(Activity.organizer_id == current_user.id)
+    )
+    joined = await db.scalar(
+        select(func.count(Activity.id))
+        .select_from(Activity)
+        .join(ActivityEnrollment, ActivityEnrollment.activity_id == Activity.id)
+        .where(
+            ActivityEnrollment.user_id == current_user.id,
+            ActivityEnrollment.status == "joined",
+        )
+    )
+    return APIResponse(
+        data=MyStatsData(
+            joinedCount=int(joined or 0),
+            organizedCount=int(organized or 0),
+        )
+    )
 
 
 @router.get("")
@@ -153,6 +181,16 @@ async def my_chats(
         .subquery()
     )
 
+    last_msg_sq = (
+        select(
+            ActivityMessage.activity_id.label("aid"),
+            func.max(ActivityMessage.created_at).label("last_msg_at"),
+        )
+        .where(ActivityMessage.activity_id.in_(select(joined_activity_ids_subq.c.activity_id)))
+        .group_by(ActivityMessage.activity_id)
+        .subquery()
+    )
+
     total = (
         await db.execute(
             select(func.count(Activity.id)).where(
@@ -165,8 +203,16 @@ async def my_chats(
         (
             await db.execute(
                 select(Activity)
-                .where(Activity.id.in_(select(joined_activity_ids_subq.c.activity_id)))
-                .order_by(Activity.updated_at.desc())
+                .join(ActivityEnrollment, ActivityEnrollment.activity_id == Activity.id)
+                .where(
+                    ActivityEnrollment.user_id == current_user.id,
+                    ActivityEnrollment.status == "joined",
+                )
+                .outerjoin(last_msg_sq, last_msg_sq.c.aid == Activity.id)
+                .order_by(
+                    func.coalesce(last_msg_sq.c.last_msg_at, EPOCH_UTC).desc(),
+                    Activity.id.desc(),
+                )
                 .offset((page - 1) * pageSize)
                 .limit(pageSize)
             )
@@ -246,9 +292,6 @@ async def my_chats(
             )
         )
 
-    chat_items.sort(
-        key=lambda item: item.lastMessageAt or datetime(1970, 1, 1, tzinfo=UTC), reverse=True
-    )
     return APIResponse(data=MyChatsData(list=chat_items, total=total, page=page, pageSize=pageSize))
 
 

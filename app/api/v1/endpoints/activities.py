@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 import math
 import logging
 
@@ -7,7 +7,12 @@ from sqlalchemy import Float, cast, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, get_optional_user
+from app.services.activity_query import (
+    date_range_start_filters,
+    effective_activity_status,
+    not_ended_condition,
+)
 from app.db.session import get_db_session
 from app.models.activity import Activity
 from app.models.activity_enrollment import ActivityEnrollment
@@ -39,29 +44,36 @@ logger = logging.getLogger(__name__)
 
 @router.get("")
 async def list_activities(
+    request: Request,
     cityCode: str = Query(...),
     dateRange: str = Query("all"),
     categoryId: str | None = Query(None),
     page: int = Query(1, ge=1),
     pageSize: int = Query(20, ge=1, le=50),
     db: AsyncSession = Depends(get_db_session),
+    optional_user: User | None = Depends(get_optional_user),
 ) -> APIResponse[ActivityListData]:
-    filters = [Activity.city_code == cityCode, Activity.activity_status == "published"]
+    if optional_user:
+        request.state.user_id = optional_user.id
+
+    now_utc = datetime.now(UTC)
+    filters = [
+        Activity.city_code == cityCode,
+        Activity.activity_status == "published",
+        not_ended_condition(now_utc),
+    ]
+    filters.extend(date_range_start_filters(dateRange))
     if categoryId:
         filters.append(Activity.category_id == categoryId)
-    # v0.1: dateRange reserved, currently relies on startAt sorting.
-    _ = dateRange
 
-    base_stmt = select(Activity).where(*filters)
     total_stmt = select(func.count(Activity.id)).where(*filters)
-
     total = (await db.execute(total_stmt)).scalar_one()
+
+    base_stmt = select(Activity).where(*filters).order_by(Activity.start_at.asc())
     rows = (
         (
             await db.execute(
-                base_stmt.order_by(Activity.start_at.asc())
-                .offset((page - 1) * pageSize)
-                .limit(pageSize)
+                base_stmt.offset((page - 1) * pageSize).limit(pageSize)
             )
         )
         .scalars()
@@ -81,6 +93,17 @@ async def list_activities(
         )
         enrollment_map = {aid: count for aid, count in enrollment_rows.all()}
 
+    joined_ids: set[int] = set()
+    if optional_user and activity_ids:
+        jr = await db.execute(
+            select(ActivityEnrollment.activity_id).where(
+                ActivityEnrollment.user_id == optional_user.id,
+                ActivityEnrollment.activity_id.in_(activity_ids),
+                ActivityEnrollment.status == "joined",
+            )
+        )
+        joined_ids = {int(r[0]) for r in jr.all()}
+
     cards = [
         ActivityCard(
             activityId=f"act_{a.id}",
@@ -92,7 +115,8 @@ async def list_activities(
             enrolledCount=enrollment_map.get(a.id, 0),
             maxMembers=a.max_members,
             categoryId=a.category_id,
-            activityStatus=a.activity_status,
+            activityStatus=effective_activity_status(a, now_utc),
+            enrollmentStatus="joined" if a.id in joined_ids else None,
         )
         for a in rows
     ]
@@ -115,10 +139,14 @@ async def list_nearby_activities(
     page: int = Query(1, ge=1),
     pageSize: int = Query(20, ge=1, le=50),
     db: AsyncSession = Depends(get_db_session),
+    optional_user: User | None = Depends(get_optional_user),
 ) -> APIResponse[NearbyActivityListData]:
     if sortBy not in {"distance", "startAt"}:
         raise HTTPException(status_code=400, detail="sortBy must be distance or startAt")
+    if optional_user:
+        request.state.user_id = optional_user.id
 
+    now_utc = datetime.now(UTC)
     lat_delta = radiusKm / 111.32
     lng_denominator = 111.32 * max(math.cos(math.radians(lat)), 0.0001)
     lng_delta = radiusKm / lng_denominator
@@ -131,17 +159,17 @@ async def list_nearby_activities(
     distance_expr = _distance_meters_expr(lat=lat, lng=lng)
     base_filters = [
         Activity.activity_status == "published",
+        not_ended_condition(now_utc),
         Activity.lat >= min_lat,
         Activity.lat <= max_lat,
         Activity.lng >= min_lng,
         Activity.lng <= max_lng,
     ]
+    base_filters.extend(date_range_start_filters(dateRange))
     if cityCode:
         base_filters.append(Activity.city_code == cityCode)
     if categoryId:
         base_filters.append(Activity.category_id == categoryId)
-    # v0.1: dateRange reserved, currently relies on startAt sorting.
-    _ = dateRange
 
     nearby_subq = (
         select(
@@ -188,6 +216,17 @@ async def list_nearby_activities(
         )
         enrollment_map = {aid: count for aid, count in enrollment_rows.all()}
 
+    joined_ids: set[int] = set()
+    if optional_user and activity_ids:
+        jr = await db.execute(
+            select(ActivityEnrollment.activity_id).where(
+                ActivityEnrollment.user_id == optional_user.id,
+                ActivityEnrollment.activity_id.in_(activity_ids),
+                ActivityEnrollment.status == "joined",
+            )
+        )
+        joined_ids = {int(r[0]) for r in jr.all()}
+
     cards = [
         ActivityCard(
             activityId=f"act_{a.id}",
@@ -200,7 +239,8 @@ async def list_nearby_activities(
             enrolledCount=enrollment_map.get(a.id, 0),
             maxMembers=a.max_members,
             categoryId=a.category_id,
-            activityStatus=a.activity_status,
+            activityStatus=effective_activity_status(a, now_utc),
+            enrollmentStatus="joined" if a.id in joined_ids else None,
         )
         for a in activities
     ]
@@ -239,6 +279,8 @@ async def get_activity_detail(
     if not activity:
         raise HTTPException(status_code=404, detail="Activity not found")
 
+    now_utc = datetime.now(UTC)
+
     organizer = await db.scalar(select(User).where(User.id == activity.organizer_id))
     enrolled_count = await db.scalar(
         select(func.count(ActivityEnrollment.id)).where(
@@ -269,7 +311,7 @@ async def get_activity_detail(
         maxMembers=activity.max_members,
         feeType=activity.fee_type,
         feeAmount=activity.fee_amount_cents,
-        activityStatus=activity.activity_status,
+        activityStatus=effective_activity_status(activity, now_utc),
         organizer=ActivityDetailOrganizer(
             userId=f"u_{organizer.id}" if organizer else "u_0",
             nickname=organizer.nickname if organizer else "未知组织者",
@@ -293,6 +335,18 @@ async def create_activity(
     if payload.endAt and payload.endAt <= payload.startAt:
         raise HTTPException(status_code=400, detail="endAt must be after startAt")
 
+    start_at = payload.startAt
+    if getattr(start_at, "tzinfo", None) is None:
+        start_at = start_at.replace(tzinfo=UTC)
+    else:
+        start_at = start_at.astimezone(UTC)
+    earliest = datetime.now(UTC) - timedelta(minutes=5)
+    if start_at < earliest:
+        raise HTTPException(
+            status_code=400,
+            detail="startAt must not be before now (5 minute tolerance)",
+        )
+
     activity = Activity(
         organizer_id=current_user.id,
         title=payload.title,
@@ -314,6 +368,7 @@ async def create_activity(
     await db.commit()
     await db.refresh(activity)
 
+    now_create = datetime.now(UTC)
     data = ActivityDetailData(
         activityId=f"act_{activity.id}",
         title=activity.title,
@@ -329,7 +384,7 @@ async def create_activity(
         maxMembers=activity.max_members,
         feeType=activity.fee_type,
         feeAmount=activity.fee_amount_cents,
-        activityStatus=activity.activity_status,
+        activityStatus=effective_activity_status(activity, now_create),
         organizer=ActivityDetailOrganizer(
             userId=f"u_{current_user.id}",
             nickname=current_user.nickname,
@@ -360,8 +415,11 @@ async def enroll_activity(
     activity = await db.scalar(select(Activity).where(Activity.id == activity_pk))
     if not activity:
         raise HTTPException(status_code=404, detail="Activity not found")
+    now_enroll = datetime.now(UTC)
     if activity.activity_status != "published":
         raise HTTPException(status_code=400, detail="Activity is not open for enrollment")
+    if activity.end_at is not None and activity.end_at <= now_enroll:
+        raise HTTPException(status_code=400, detail="Activity has ended")
 
     joined_count = await db.scalar(
         select(func.count(ActivityEnrollment.id)).where(

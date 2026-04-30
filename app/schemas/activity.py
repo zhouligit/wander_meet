@@ -15,6 +15,7 @@ class ActivityCard(BaseModel):
     maxMembers: int
     categoryId: str
     activityStatus: str
+    enrollmentStatus: str | None = None
 
 
 class ActivityListData(BaseModel):

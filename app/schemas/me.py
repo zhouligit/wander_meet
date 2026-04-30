@@ -60,3 +60,8 @@ class MyChatsData(BaseModel):
     total: int
     page: int
     pageSize: int
+
+
+class MyStatsData(BaseModel):
+    joinedCount: int
+    organizedCount: int

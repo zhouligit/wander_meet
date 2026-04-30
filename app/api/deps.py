@@ -8,6 +8,7 @@ from app.db.session import get_db_session
 from app.models.user import User
 
 bearer_scheme = HTTPBearer(auto_error=True)
+optional_bearer = HTTPBearer(auto_error=False)
 
 
 async def get_current_user(
@@ -35,4 +36,23 @@ async def get_admin_user(current_user: User = Depends(get_current_user)) -> User
     if current_user.role != "admin":
         raise HTTPException(status_code=403, detail="Admin permission required")
     return current_user
+
+
+async def get_optional_user(
+    credentials: HTTPAuthorizationCredentials | None = Depends(optional_bearer),
+    db: AsyncSession = Depends(get_db_session),
+) -> User | None:
+    if credentials is None:
+        return None
+    try:
+        payload = decode_access_token(credentials.credentials)
+        user_id = int(payload.get("sub", "0"))
+    except Exception:
+        return None
+    if user_id <= 0:
+        return None
+    user = await db.scalar(select(User).where(User.id == user_id))
+    if not user or user.status == "banned":
+        return None
+    return user
 
