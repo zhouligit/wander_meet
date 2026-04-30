@@ -11,6 +11,19 @@ from app.models.activity import Activity
 TZ_BJ = ZoneInfo("Asia/Shanghai")
 
 
+def to_utc(dt: datetime) -> datetime:
+    """Normalize to UTC for persistence (MySQL/async drivers expect aware datetimes)."""
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=UTC)
+    return dt.astimezone(UTC)
+
+
+def to_utc_optional(dt: datetime | None) -> datetime | None:
+    if dt is None:
+        return None
+    return to_utc(dt)
+
+
 def not_ended_condition(now_utc: datetime) -> ColumnElement[bool]:
     return or_(Activity.end_at.is_(None), Activity.end_at >= now_utc)
 
@@ -40,8 +53,9 @@ def date_range_start_filters(date_range: str) -> list[ColumnElement[bool]]:
 
 
 def effective_activity_status(activity, now_utc: datetime) -> str:
+    """Compare using UTC-aware datetimes (MySQL/asyncmy may return naive from ORM)."""
     if activity.activity_status != "published":
         return activity.activity_status
-    if activity.end_at is not None and activity.end_at <= now_utc:
+    if activity.end_at is not None and to_utc(activity.end_at) <= now_utc:
         return "ended"
     return "published"

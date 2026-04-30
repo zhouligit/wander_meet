@@ -12,6 +12,8 @@ from app.services.activity_query import (
     date_range_start_filters,
     effective_activity_status,
     not_ended_condition,
+    to_utc,
+    to_utc_optional,
 )
 from app.db.session import get_db_session
 from app.models.activity import Activity
@@ -332,16 +334,14 @@ async def create_activity(
 ) -> APIResponse[ActivityDetailData]:
     if current_user.status != "active":
         raise HTTPException(status_code=403, detail="User is restricted")
-    if payload.endAt and payload.endAt <= payload.startAt:
+
+    start_at_utc = to_utc(payload.startAt)
+    end_at_utc = to_utc_optional(payload.endAt)
+    if end_at_utc is not None and end_at_utc <= start_at_utc:
         raise HTTPException(status_code=400, detail="endAt must be after startAt")
 
-    start_at = payload.startAt
-    if getattr(start_at, "tzinfo", None) is None:
-        start_at = start_at.replace(tzinfo=UTC)
-    else:
-        start_at = start_at.astimezone(UTC)
     earliest = datetime.now(UTC) - timedelta(minutes=5)
-    if start_at < earliest:
+    if start_at_utc < earliest:
         raise HTTPException(
             status_code=400,
             detail="startAt must not be before now (5 minute tolerance)",
@@ -357,8 +357,8 @@ async def create_activity(
         address_detail=payload.addressDetail,
         lat=payload.lat,
         lng=payload.lng,
-        start_at=payload.startAt,
-        end_at=payload.endAt,
+        start_at=start_at_utc,
+        end_at=end_at_utc,
         max_members=payload.maxMembers,
         fee_type=payload.feeType,
         fee_amount_cents=payload.feeAmount,
@@ -418,7 +418,7 @@ async def enroll_activity(
     now_enroll = datetime.now(UTC)
     if activity.activity_status != "published":
         raise HTTPException(status_code=400, detail="Activity is not open for enrollment")
-    if activity.end_at is not None and activity.end_at <= now_enroll:
+    if activity.end_at is not None and to_utc(activity.end_at) <= now_enroll:
         raise HTTPException(status_code=400, detail="Activity has ended")
 
     joined_count = await db.scalar(
@@ -515,9 +515,13 @@ async def update_activity(
         raise HTTPException(status_code=403, detail="Only organizer can update activity")
 
     updates = payload.model_dump(exclude_unset=True)
-    if "endAt" in updates and "startAt" in updates and updates["endAt"] <= updates["startAt"]:
+    if "endAt" in updates and "startAt" in updates and to_utc(updates["endAt"]) <= to_utc(
+        updates["startAt"]
+    ):
         raise HTTPException(status_code=400, detail="endAt must be after startAt")
-    if "endAt" in updates and "startAt" not in updates and updates["endAt"] <= activity.start_at:
+    if "endAt" in updates and "startAt" not in updates and to_utc(updates["endAt"]) <= to_utc(
+        activity.start_at
+    ):
         raise HTTPException(status_code=400, detail="endAt must be after startAt")
 
     field_map = {
@@ -536,7 +540,12 @@ async def update_activity(
     }
     for req_key, model_key in field_map.items():
         if req_key in updates:
-            setattr(activity, model_key, updates[req_key])
+            val = updates[req_key]
+            if req_key == "startAt":
+                val = to_utc(val)
+            elif req_key == "endAt" and val is not None:
+                val = to_utc(val)
+            setattr(activity, model_key, val)
     await db.commit()
     await db.refresh(activity)
 
