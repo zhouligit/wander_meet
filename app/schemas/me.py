@@ -15,6 +15,7 @@ class MeData(BaseModel):
     phoneMasked: str
     nickname: str
     avatarUrl: str | None = None
+    bio: str = ""
     tags: list[str]
     status: str
     verification: VerificationSummary
@@ -23,6 +24,7 @@ class MeData(BaseModel):
 class UpdateMeRequest(BaseModel):
     nickname: str | None = None
     avatarUrl: str | None = None
+    bio: str | None = None
     tags: list[str] | None = None
 
 

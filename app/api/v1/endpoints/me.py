@@ -59,13 +59,16 @@ async def get_me(current_user: User = Depends(get_current_user)) -> APIResponse[
     phone_masked = "***********"
     if len(current_user.phone_hash) >= 4:
         phone_masked = f"***{current_user.phone_hash[-4:]}"
+    raw_tags = current_user.tags
+    tags_list: list[str] = raw_tags if isinstance(raw_tags, list) else []
     return APIResponse(
         data=MeData(
             userId=f"u_{current_user.id}",
             phoneMasked=phone_masked,
             nickname=current_user.nickname,
             avatarUrl=current_user.avatar_url,
-            tags=[],
+            bio=(current_user.bio or "").strip() if current_user.bio else "",
+            tags=tags_list,
             status=current_user.status,
             verification=VerificationSummary(status="none", canCreateActivity=True),
         )
@@ -82,6 +85,11 @@ async def update_me(
         current_user.nickname = payload.nickname
     if payload.avatarUrl is not None:
         current_user.avatar_url = payload.avatarUrl
+    if payload.bio is not None:
+        b = (payload.bio or "").strip()
+        current_user.bio = b[:2000] if b else None
+    if payload.tags is not None:
+        current_user.tags = list(payload.tags)[:20]
     await db.commit()
     await db.refresh(current_user)
     return await get_me(current_user=current_user)

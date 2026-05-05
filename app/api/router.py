@@ -9,6 +9,7 @@ from app.api.v1.endpoints.me import router as me_router
 from app.api.v1.endpoints.meta import router as meta_router
 from app.api.v1.endpoints.notifications import router as notifications_router
 from app.api.v1.endpoints.reports import router as reports_router
+from app.api.v1.endpoints.users import router as users_router
 from app.api.v1.endpoints.verification import router as verification_router
 
 api_router = APIRouter(prefix="/api/v1/wm")
@@ -16,6 +17,7 @@ api_router.include_router(health_router)
 api_router.include_router(auth_router)
 api_router.include_router(activities_router)
 api_router.include_router(me_router)
+api_router.include_router(users_router)
 api_router.include_router(meta_router)
 api_router.include_router(verification_router)
 api_router.include_router(reports_router)

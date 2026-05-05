@@ -188,6 +188,7 @@ Authorization: Bearer wm_at_xxx
 | phoneMasked | string | 脱敏手机号，如 `138****8000` |
 | nickname | string | 昵称 |
 | avatarUrl | string \| null | 头像 URL |
+| bio | string | 个人简介 |
 | tags | array | 标签，如 `["digital_nomad","weekend"]` |
 | status | string | `active` \| `banned` \| `restricted` |
 | verification | object | 认证状态摘要（见下方） |
@@ -210,6 +211,7 @@ Authorization: Bearer wm_at_xxx
     "phoneMasked": "138****8000",
     "nickname": "旅人小王",
     "avatarUrl": "https://cdn.example.com/a.png",
+    "bio": "周末 hiking · coffee",
     "tags": ["digital_nomad", "weekend"],
     "status": "active",
     "verification": {
@@ -219,6 +221,36 @@ Authorization: Bearer wm_at_xxx
   }
 }
 ```
+
+---
+
+### `GET /api/v1/wm/users/:userId/public`
+
+查看**其他用户**对外公开的资料（小程序发起人主页等）。需登录；被封禁用户对他人返回「不存在」。
+
+#### 路径参数
+
+| 参数 | 类型 | 说明 |
+| --- | --- | --- |
+| userId | string | 用户 ID，支持 `u_12` 或 `12` |
+
+#### 响应 `data`
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| userId | string | 用户 ID |
+| nickname | string | 昵称 |
+| avatarUrl | string \| null | 头像 |
+| bio | string | 个人简介 |
+| tags | array | 兴趣标签 |
+| verificationBadge | boolean | 是否已通过实名/认证审核（以 `user_verifications.status=approved` 为准） |
+| organizedCount | number | 作为发起人已发布的活动数量 |
+
+#### 错误
+
+| code | 说明 |
+| --- | --- |
+| 404 | 用户不存在或不可见 |
 
 ---
 
@@ -232,6 +264,7 @@ Authorization: Bearer wm_at_xxx
 | --- | --- | --- | --- | --- |
 | nickname | body | string | 否 | 昵称 |
 | avatarUrl | body | string | 否 | 头像 URL（若先直传 OSS，可为上传后 URL） |
+| bio | body | string | 否 | 个人简介 |
 | tags | body | array | 否 | 标签 ID 或枚举值列表 |
 
 ### 请求参数示例（JSON）
@@ -239,6 +272,7 @@ Authorization: Bearer wm_at_xxx
 ```json
 {
   "nickname": "小王在北京",
+  "bio": "周末 hiking · coffee",
   "tags": ["digital_nomad", "solo_travel"]
 }
 ```
@@ -258,6 +292,7 @@ Authorization: Bearer wm_at_xxx
     "phoneMasked": "138****8000",
     "nickname": "小王在北京",
     "avatarUrl": "https://cdn.example.com/a.png",
+    "bio": "周末 hiking · coffee",
     "tags": ["digital_nomad", "solo_travel"],
     "status": "active",
     "verification": {
