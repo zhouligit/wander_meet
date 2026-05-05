@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user
 from app.db.session import get_db_session
+from app.services.user_profile_fields import bio_from_user, tags_from_user
 from app.models.activity import Activity
 from app.models.activity_enrollment import ActivityEnrollment
 from app.models.activity_message import ActivityMessage
@@ -59,16 +60,14 @@ async def get_me(current_user: User = Depends(get_current_user)) -> APIResponse[
     phone_masked = "***********"
     if len(current_user.phone_hash) >= 4:
         phone_masked = f"***{current_user.phone_hash[-4:]}"
-    raw_tags = current_user.tags
-    tags_list: list[str] = raw_tags if isinstance(raw_tags, list) else []
     return APIResponse(
         data=MeData(
             userId=f"u_{current_user.id}",
             phoneMasked=phone_masked,
             nickname=current_user.nickname,
             avatarUrl=current_user.avatar_url,
-            bio=(current_user.bio or "").strip() if current_user.bio else "",
-            tags=tags_list,
+            bio=bio_from_user(current_user),
+            tags=tags_from_user(current_user),
             status=current_user.status,
             verification=VerificationSummary(status="none", canCreateActivity=True),
         )

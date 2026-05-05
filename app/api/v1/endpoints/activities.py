@@ -8,6 +8,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, get_optional_user
+from app.services.user_profile_fields import bio_from_user, tags_from_user
 from app.services.activity_query import (
     date_range_start_filters,
     effective_activity_status,
@@ -53,16 +54,12 @@ def _organizer_for_detail(org: User | None) -> ActivityDetailOrganizer:
             bio="",
             tags=[],
         )
-    raw_tags = org.tags
-    tags_out: list[str] = []
-    if isinstance(raw_tags, list):
-        tags_out = [str(x) for x in raw_tags if x is not None][:30]
     return ActivityDetailOrganizer(
         userId=f"u_{org.id}",
         nickname=org.nickname,
         avatarUrl=org.avatar_url,
-        bio=(org.bio or "").strip(),
-        tags=tags_out,
+        bio=bio_from_user(org),
+        tags=tags_from_user(org),
     )
 
 
