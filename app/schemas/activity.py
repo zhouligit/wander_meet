@@ -65,6 +65,8 @@ class ActivityDetailOrganizer(BaseModel):
     userId: str
     nickname: str
     avatarUrl: str | None = None
+    bio: str = ""
+    tags: list[str] = Field(default_factory=list)
 
 
 class MyEnrollment(BaseModel):

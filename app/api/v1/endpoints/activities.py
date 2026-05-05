@@ -44,6 +44,28 @@ router = APIRouter(prefix="/activities", tags=["activities"])
 logger = logging.getLogger(__name__)
 
 
+def _organizer_for_detail(org: User | None) -> ActivityDetailOrganizer:
+    if not org:
+        return ActivityDetailOrganizer(
+            userId="u_0",
+            nickname="未知组织者",
+            avatarUrl=None,
+            bio="",
+            tags=[],
+        )
+    raw_tags = org.tags
+    tags_out: list[str] = []
+    if isinstance(raw_tags, list):
+        tags_out = [str(x) for x in raw_tags if x is not None][:30]
+    return ActivityDetailOrganizer(
+        userId=f"u_{org.id}",
+        nickname=org.nickname,
+        avatarUrl=org.avatar_url,
+        bio=(org.bio or "").strip(),
+        tags=tags_out,
+    )
+
+
 @router.get("")
 async def list_activities(
     request: Request,
@@ -314,11 +336,7 @@ async def get_activity_detail(
         feeType=activity.fee_type,
         feeAmount=activity.fee_amount_cents,
         activityStatus=effective_activity_status(activity, now_utc),
-        organizer=ActivityDetailOrganizer(
-            userId=f"u_{organizer.id}" if organizer else "u_0",
-            nickname=organizer.nickname if organizer else "未知组织者",
-            avatarUrl=organizer.avatar_url if organizer else None,
-        ),
+        organizer=_organizer_for_detail(organizer),
         enrolledCount=int(enrolled_count or 0),
         myEnrollment=MyEnrollment(status="joined") if my_enrollment_row else None,
     )
@@ -385,11 +403,7 @@ async def create_activity(
         feeType=activity.fee_type,
         feeAmount=activity.fee_amount_cents,
         activityStatus=effective_activity_status(activity, now_create),
-        organizer=ActivityDetailOrganizer(
-            userId=f"u_{current_user.id}",
-            nickname=current_user.nickname,
-            avatarUrl=current_user.avatar_url,
-        ),
+        organizer=_organizer_for_detail(current_user),
         enrolledCount=0,
         myEnrollment=None,
     )

@@ -603,9 +603,19 @@ Authorization: Bearer wm_at_xxx
 | feeAmount | number \| null | 固定金额（分）或展示用 |
 | rulesAccepted | object | PRD 规则勾选留痕 |
 | activityStatus | string | 见数据库说明 |
-| organizer | object | 组织者信息 |
+| organizer | object | 组织者信息（见下） |
 | enrolledCount | number | 已报名人数 |
 | myEnrollment | object \| null | 当前用户报名态 |
+
+### `organizer` 对象（活动详情）
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| userId | string | 用户 ID |
+| nickname | string | 昵称 |
+| avatarUrl | string \| null | 头像 |
+| bio | string | 对外展示的个人简介（与 `GET /users/:userId/public` 同源） |
+| tags | array | 兴趣标签 |
 
 ### `rulesAccepted` 示例字段
 
@@ -647,7 +657,8 @@ Authorization: Bearer wm_at_xxx
       "userId": "u_10002",
       "nickname": "领队阿李",
       "avatarUrl": null,
-      "verificationBadge": true
+      "bio": "周末喜欢轻徒步，欢迎新手。",
+      "tags": ["hiking", "摄影"]
     },
     "enrolledCount": 4,
     "myEnrollment": null
