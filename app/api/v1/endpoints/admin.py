@@ -9,6 +9,7 @@ from app.db.session import get_db_session
 from app.models.activity import Activity
 from app.models.user import User
 from app.schemas.common import APIResponse
+from app.schemas.datetime_iso import datetime_to_rfc3339_utc_z
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -43,7 +44,7 @@ async def admin_activities(
                     "activityId": f"act_{a.id}",
                     "title": a.title,
                     "activityStatus": a.activity_status,
-                    "startAt": a.start_at,
+                    "startAt": datetime_to_rfc3339_utc_z(a.start_at),
                 }
                 for a in rows
             ],

@@ -1,6 +1,8 @@
 from datetime import datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_serializer
+
+from app.schemas.datetime_iso import datetime_to_rfc3339_utc_z
 
 
 class VerificationSummary(BaseModel):
@@ -32,6 +34,10 @@ class MyActivitiesItem(BaseModel):
     categoryId: str
     activityStatus: str
 
+    @field_serializer("startAt")
+    def _ser_start_at(self, v: datetime) -> str:
+        return datetime_to_rfc3339_utc_z(v) or ""
+
 
 class MyActivitiesData(BaseModel):
     list: list[MyActivitiesItem]
@@ -53,6 +59,10 @@ class MyChatItem(BaseModel):
     lastMessage: str | None = None
     lastMessageAt: datetime | None = None
     unreadCount: int
+
+    @field_serializer("lastMessageAt")
+    def _ser_last_message_at(self, v: datetime | None) -> str | None:
+        return datetime_to_rfc3339_utc_z(v)
 
 
 class MyChatsData(BaseModel):

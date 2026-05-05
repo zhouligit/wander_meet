@@ -1,6 +1,8 @@
 from datetime import datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_serializer
+
+from app.schemas.datetime_iso import datetime_to_rfc3339_utc_z
 
 
 class ActivityCard(BaseModel):
@@ -16,6 +18,10 @@ class ActivityCard(BaseModel):
     categoryId: str
     activityStatus: str
     enrollmentStatus: str | None = None
+
+    @field_serializer("startAt")
+    def _ser_start_at(self, v: datetime) -> str:
+        return datetime_to_rfc3339_utc_z(v) or ""
 
 
 class ActivityListData(BaseModel):
@@ -85,6 +91,10 @@ class ActivityDetailData(BaseModel):
     enrolledCount: int
     myEnrollment: MyEnrollment | None = None
 
+    @field_serializer("startAt", "endAt")
+    def _ser_detail_times(self, v: datetime | None) -> str | None:
+        return datetime_to_rfc3339_utc_z(v)
+
 
 class EnrollmentData(BaseModel):
     enrollmentId: str
@@ -113,6 +123,10 @@ class ActivityMemberItem(BaseModel):
     role: str
     joinedAt: datetime
 
+    @field_serializer("joinedAt")
+    def _ser_joined_at(self, v: datetime) -> str:
+        return datetime_to_rfc3339_utc_z(v) or ""
+
 
 class ActivityMembersData(BaseModel):
     list: list[ActivityMemberItem]
@@ -132,6 +146,10 @@ class ChatMessageItem(BaseModel):
     text: str | None = None
     imageUrl: str | None = None
     createdAt: datetime
+
+    @field_serializer("createdAt")
+    def _ser_created_at(self, v: datetime) -> str:
+        return datetime_to_rfc3339_utc_z(v) or ""
 
 
 class ChatMessagesData(BaseModel):

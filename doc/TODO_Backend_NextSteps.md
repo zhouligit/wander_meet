@@ -1,6 +1,6 @@
 # WanderMeet Backend TODO（接口联通后）
 
-更新时间：2026-04-16  
+更新时间：2026-04-30  
 适用范围：当前 FastAPI + MySQL + Redis 后端
 
 ---
@@ -14,7 +14,10 @@
 
 ## 1.2 用户与资料
 
-- [ ] 头像上传仍为占位：`POST /api/v1/wm/me/avatar/upload-url` 返回占位 URL，未接 OSS/OBS 预签名。
+- [ ] **头像（落库与全链路）**  
+  - 现状：`users.avatar_url` 与 `PATCH /me` 的 `avatarUrl` 已可写库；`GET /me` 会返回 `avatarUrl`。  
+  - 后端待做：`POST /me/avatar/upload-url` 仍返回占位地址，**需接阿里云 OSS（或同类）预签名上传**，并约定 `objectKey`、直传成功后的**可访问公网 URL** 规则。  
+  - 小程序待做（`lv_ju/travel-together`）：`profile-edit` 目前仅为「昵称首字母」展示，**无** `chooseImage` / 直传 / `updateMe({ avatarUrl })` 回写；个人中心展示需改为优先 `image` + `avatarUrl`（有则显图、无则首字）。  
 - [ ] `GET /api/v1/wm/me` 中 `tags` 仍为固定空数组，未落库。
 - [ ] `GET /api/v1/wm/me` 中 `phoneMasked` 仍为占位逻辑（非真实手机号脱敏流程）。
 
