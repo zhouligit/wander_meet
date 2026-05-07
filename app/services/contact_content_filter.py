@@ -12,6 +12,8 @@ _FULLWIDTH_ZERO = ord("\uff10")
 
 def _normalize_text_for_scan(s: str) -> str:
     t = unicodedata.normalize("NFKC", s or "")
+    for z in ("\u200b", "\u200c", "\u200d", "\ufeff", "\u2060"):
+        t = t.replace(z, "")
     out: list[str] = []
     for ch in t:
         if "\uff10" <= ch <= "\uff19":
@@ -46,12 +48,14 @@ _SOLICIT_PHRASES: tuple[str, ...] = (
     "私加微信",
 )
 
-# 带结构 id / 号 的样式
+# 带结构 id / 号 的样式（冒号含半角、全角 U+FF1A）
+_COLON = "\uFF1A:"  # 全角冒号 + 半角
+# wx/vx 后 ID 至少 3 位，避免漏拦短号；与客户端 Mock 规则保持一致
 _CONTACT_HINT_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(r"微信[号\s：:]*[a-zA-Z0-9_\-]{4,32}"),
     re.compile(r"薇信[号\s：:]*[a-zA-Z0-9_\-]{4,32}"),
-    re.compile(r"(?i)wx\s*[：:]\s*[a-zA-Z0-9_\-]{5,32}"),
-    re.compile(r"(?i)vx\s*[：:]\s*[a-zA-Z0-9_\-]{4,32}"),
+    re.compile(rf"(?i)wx\s*[{_COLON}：]\s*[a-zA-Z0-9_\-]{{3,32}}"),
+    re.compile(rf"(?i)vx\s*[{_COLON}：]\s*[a-zA-Z0-9_\-]{{3,32}}"),
     re.compile(r"微信号[：:\s]*[a-zA-Z0-9_\-]{4,32}"),
     re.compile(r"(?i)wechat[：:\s]+[a-zA-Z0-9_\-]{4,32}"),
     re.compile(r"(?:QQ|qq)[：:\s]*\d{5,12}"),
