@@ -10,6 +10,7 @@ from app.core.config import get_settings
 from app.core.security import create_access_token, decode_access_token, hash_phone
 from app.db.session import get_db_session, redis_client
 from app.services.ihuyi_sms import IhuiSmsError, send_sms_submit_sync
+from app.services.phone_validation import parse_cn_mobile
 from app.models.user import User
 from app.schemas.auth import (
     LoginUser,
@@ -23,7 +24,8 @@ from app.schemas.auth import (
 from app.schemas.common import APIResponse
 
 router = APIRouter(prefix="/auth", tags=["auth"])
-SMS_CODE_TTL_SECONDS = 1800
+SMS_CODE_TTL_SECONDS = 300  # 5 分钟
+SMS_SEND_MIN_INTERVAL_SECONDS = 60
 
 logger = logging.getLogger(__name__)
 
@@ -35,9 +37,23 @@ def _generate_sms_code() -> str:
 
 @router.post("/sms/send")
 async def send_sms_code(payload: SendSMSCodeRequest) -> APIResponse[SendSMSCodeData]:
+    phone = parse_cn_mobile(payload.phone)
+    if phone is None:
+        raise HTTPException(status_code=400, detail="手机号格式不正确")
+
     settings = get_settings()
+    rate_key = f"wm:sms:send:rate:{phone}"
+    acquired = await redis_client.set(
+        rate_key,
+        "1",
+        ex=SMS_SEND_MIN_INTERVAL_SECONDS,
+        nx=True,
+    )
+    if not acquired:
+        raise HTTPException(status_code=429, detail="发送过于频繁，请60秒后再试")
+
     code = _generate_sms_code()
-    redis_key = f"wm:sms:{payload.scene}:{payload.phone}"
+    redis_key = f"wm:sms:{payload.scene}:{phone}"
     await redis_client.set(redis_key, code, ex=SMS_CODE_TTL_SECONDS)
 
     account = (settings.ihuyi_account or "").strip()
@@ -49,15 +65,17 @@ async def send_sms_code(payload: SendSMSCodeRequest) -> APIResponse[SendSMSCodeD
                 send_sms_submit_sync,
                 account,
                 password,
-                payload.phone,
+                phone,
                 content,
             )
         except IhuiSmsError as exc:
             await redis_client.delete(redis_key)
+            await redis_client.delete(rate_key)
             raise HTTPException(status_code=502, detail=str(exc)) from exc
     else:
         if settings.app_env.lower() in ("prod", "production"):
             await redis_client.delete(redis_key)
+            await redis_client.delete(rate_key)
             raise HTTPException(
                 status_code=503,
                 detail="SMS service not configured (set IHUYI_ACCOUNT / IHUYI_PASSWORD)",
@@ -65,7 +83,7 @@ async def send_sms_code(payload: SendSMSCodeRequest) -> APIResponse[SendSMSCodeD
         logger.warning(
             "IHUYI not configured — dev code for scene=%s phone=%s code=%s",
             payload.scene,
-            payload.phone,
+            phone,
             code,
         )
 
@@ -76,21 +94,25 @@ async def send_sms_code(payload: SendSMSCodeRequest) -> APIResponse[SendSMSCodeD
 async def sms_login(
     payload: SMSLoginRequest, db: AsyncSession = Depends(get_db_session)
 ) -> APIResponse[SMSLoginData]:
-    redis_key = f"wm:sms:login:{payload.phone}"
+    phone = parse_cn_mobile(payload.phone)
+    if phone is None:
+        raise HTTPException(status_code=400, detail="手机号格式不正确")
+
+    redis_key = f"wm:sms:login:{phone}"
     cached_code = await redis_client.get(redis_key)
     if not cached_code or cached_code != payload.code:
         raise HTTPException(status_code=400, detail="Invalid or expired code")
 
-    phone_hash = hash_phone(payload.phone)
+    phone_hash = hash_phone(phone)
     user = await db.scalar(select(User).where(User.phone_hash == phone_hash))
     if not user:
-        user = User(phone=payload.phone, phone_hash=phone_hash, nickname=f"旅人{payload.phone[-4:]}")
+        user = User(phone=phone, phone_hash=phone_hash, nickname=f"旅人{phone[-4:]}")
         db.add(user)
         await db.commit()
         await db.refresh(user)
     elif not user.phone:
         # Backfill plain phone for historical users after phone column rollout.
-        user.phone = payload.phone
+        user.phone = phone
         await db.commit()
 
     access_token = create_access_token(user.id)
