@@ -497,6 +497,14 @@ async def cancel_enrollment(
     current_user: User = Depends(get_current_user),
 ) -> APIResponse[dict[str, str]]:
     activity_pk = _parse_activity_id(activity_id)
+    activity = await db.scalar(select(Activity).where(Activity.id == activity_pk))
+    if not activity:
+        raise HTTPException(status_code=404, detail="Activity not found")
+    if activity.organizer_id == current_user.id:
+        raise HTTPException(
+            status_code=403,
+            detail="Organizer cannot cancel own enrollment; cancel the activity instead",
+        )
     enrollment = await db.scalar(
         select(ActivityEnrollment).where(
             ActivityEnrollment.activity_id == activity_pk,
