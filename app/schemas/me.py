@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, field_serializer
 
@@ -13,11 +14,15 @@ class VerificationSummary(BaseModel):
     canCreateActivity: bool
 
 
+UserGender = Literal["male", "female", "unspecified"]
+
+
 class MeData(BaseModel):
     userId: str
     phoneMasked: str
     nickname: str
     avatarUrl: str | None = None
+    gender: UserGender | None = None
     bio: str = ""
     tags: list[str]
     status: str
@@ -29,6 +34,7 @@ class UpdateMeRequest(BaseModel):
     avatarUrl: str | None = None
     bio: str | None = None
     tags: list[str] | None = None
+    gender: UserGender | None = None
 
 
 class MyActivitiesItem(BaseModel):

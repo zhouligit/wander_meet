@@ -156,10 +156,14 @@ async def get_user_public_profile(
     )
     verification_badge = approved is not None
 
+    pub_g = target.gender
+    if pub_g is not None and pub_g not in ("male", "female", "unspecified"):
+        pub_g = None
     data = UserPublicProfileData(
         userId=f"u_{target.id}",
         nickname=target.nickname,
         avatarUrl=target.avatar_url,
+        gender=pub_g,
         bio=bio_from_user(target),
         tags=tags_from_user(target),
         verificationBadge=verification_badge,

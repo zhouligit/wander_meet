@@ -19,6 +19,7 @@ class LoginUser(BaseModel):
     userId: str
     nickname: str
     avatarUrl: str | None = None
+    gender: str | None = None
     status: str
 
 

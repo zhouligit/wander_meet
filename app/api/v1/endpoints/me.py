@@ -1,6 +1,6 @@
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -60,12 +60,16 @@ async def get_me(current_user: User = Depends(get_current_user)) -> APIResponse[
     phone_masked = "***********"
     if len(current_user.phone_hash) >= 4:
         phone_masked = f"***{current_user.phone_hash[-4:]}"
+    g = current_user.gender
+    if g is not None and g not in ("male", "female", "unspecified"):
+        g = None
     return APIResponse(
         data=MeData(
             userId=f"u_{current_user.id}",
             phoneMasked=phone_masked,
             nickname=current_user.nickname,
             avatarUrl=current_user.avatar_url,
+            gender=g,
             bio=bio_from_user(current_user),
             tags=tags_from_user(current_user),
             status=current_user.status,
@@ -89,6 +93,12 @@ async def update_me(
         current_user.bio = b[:2000] if b else None
     if payload.tags is not None:
         current_user.tags = list(payload.tags)[:20]
+    if payload.gender is not None:
+        if current_user.gender is not None:
+            if payload.gender != current_user.gender:
+                raise HTTPException(status_code=400, detail="性别提交后不可修改")
+        else:
+            current_user.gender = payload.gender
     await db.commit()
     await db.refresh(current_user)
     return await get_me(current_user=current_user)

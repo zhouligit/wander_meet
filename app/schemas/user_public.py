@@ -7,6 +7,7 @@ class UserPublicProfileData(BaseModel):
     userId: str
     nickname: str
     avatarUrl: str | None = None
+    gender: str | None = None
     bio: str = ""
     tags: list[str] = Field(default_factory=list)
     verificationBadge: bool = False

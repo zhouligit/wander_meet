@@ -60,6 +60,7 @@ async def sms_login(
             userId=f"u_{user.id}",
             nickname=user.nickname,
             avatarUrl=user.avatar_url,
+            gender=user.gender,
             status=user.status,
         ),
     )
