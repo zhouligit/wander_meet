@@ -1,9 +1,0 @@
-{
-  "name": "travel-together",
-  "version": "0.1.0",
-  "private": true,
-  "description": "WanderMeet 小程序。可用 HBuilderX 打开本目录，或使用官方 uni-app 脚手架合并依赖。",
-  "scripts": {},
-  "dependencies": {},
-  "devDependencies": {}
-}
