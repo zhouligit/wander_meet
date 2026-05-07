@@ -37,4 +37,9 @@ class RefreshTokenRequest(BaseModel):
 class RefreshTokenData(BaseModel):
     accessToken: str
     expiresIn: int
+    refreshToken: str
+
+
+class LogoutData(BaseModel):
+    status: str = "ok"
 

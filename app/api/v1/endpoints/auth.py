@@ -1,19 +1,26 @@
 import asyncio
 import logging
 import secrets
+from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.security import HTTPAuthorizationCredentials
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.deps import bearer_scheme
 from app.core.config import get_settings
 from app.core.security import create_access_token, decode_access_token, hash_phone
 from app.db.session import get_db_session, redis_client
+from app.services.auth_blacklist import blacklist_access_jti
+from app.services.auth_refresh import issue_refresh_token, rotate_refresh_token, revoke_all_refresh_for_user
 from app.services.ihuyi_sms import IhuiSmsError, send_sms_submit_sync
+from app.services.ip_rate_limit import enforce_auth_ip_rate_limit
 from app.services.phone_validation import parse_cn_mobile
 from app.models.user import User
 from app.schemas.auth import (
     LoginUser,
+    LogoutData,
     RefreshTokenData,
     RefreshTokenRequest,
     SMSLoginData,
@@ -35,7 +42,15 @@ def _generate_sms_code() -> str:
     return str(secrets.randbelow(900000) + 100000)
 
 
-@router.post("/sms/send")
+async def _limit_sms_send_ip(request: Request) -> None:
+    await enforce_auth_ip_rate_limit(request, "sms_send")
+
+
+async def _limit_sms_login_ip(request: Request) -> None:
+    await enforce_auth_ip_rate_limit(request, "sms_login")
+
+
+@router.post("/sms/send", dependencies=[Depends(_limit_sms_send)])
 async def send_sms_code(payload: SendSMSCodeRequest) -> APIResponse[SendSMSCodeData]:
     phone = parse_cn_mobile(payload.phone)
     if phone is None:
@@ -106,7 +121,7 @@ async def send_sms_code(payload: SendSMSCodeRequest) -> APIResponse[SendSMSCodeD
     return APIResponse(data=SendSMSCodeData(expireInSeconds=SMS_CODE_TTL_SECONDS))
 
 
-@router.post("/sms/login")
+@router.post("/sms/login", dependencies=[Depends(_limit_sms_login_ip)])
 async def sms_login(
     payload: SMSLoginRequest, db: AsyncSession = Depends(get_db_session)
 ) -> APIResponse[SMSLoginData]:
@@ -118,6 +133,8 @@ async def sms_login(
     cached_code = await redis_client.get(redis_key)
     if not cached_code or cached_code != payload.code:
         raise HTTPException(status_code=400, detail="Invalid or expired code")
+
+    await redis_client.delete(redis_key)
 
     phone_hash = hash_phone(phone)
     user = await db.scalar(select(User).where(User.phone_hash == phone_hash))
@@ -131,11 +148,14 @@ async def sms_login(
         user.phone = phone
         await db.commit()
 
+    settings = get_settings()
     access_token = create_access_token(user.id)
+    refresh_raw = await issue_refresh_token(user.id, settings.refresh_token_expires_seconds)
+
     response_data = SMSLoginData(
         accessToken=access_token,
-        expiresIn=7200,
-        refreshToken=access_token,
+        expiresIn=settings.access_token_expires_seconds,
+        refreshToken=refresh_raw,
         user=LoginUser(
             userId=f"u_{user.id}",
             nickname=user.nickname,
@@ -148,15 +168,56 @@ async def sms_login(
 
 
 @router.post("/token/refresh")
-async def refresh_token(payload: RefreshTokenRequest) -> APIResponse[RefreshTokenData]:
+async def refresh_token(
+    payload: RefreshTokenRequest,
+    db: AsyncSession = Depends(get_db_session),
+) -> APIResponse[RefreshTokenData]:
+    raw = (payload.refreshToken or "").strip()
+    if not raw:
+        raise HTTPException(status_code=400, detail="refreshToken is required")
+
+    settings = get_settings()
+    uid, new_rt = await rotate_refresh_token(raw, settings.refresh_token_expires_seconds)
+    if uid is None or not new_rt:
+        raise HTTPException(status_code=401, detail="Invalid or expired refresh token")
+
+    user = await db.scalar(select(User).where(User.id == uid))
+    if not user:
+        raise HTTPException(status_code=401, detail="User not found")
+    if user.status == "banned":
+        raise HTTPException(status_code=403, detail="User is banned")
+
+    access_token = create_access_token(user.id)
+    return APIResponse(
+        data=RefreshTokenData(
+            accessToken=access_token,
+            expiresIn=settings.access_token_expires_seconds,
+            refreshToken=new_rt,
+        )
+    )
+
+
+@router.post("/logout")
+async def logout(
+    credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
+) -> APIResponse[LogoutData]:
+    token = credentials.credentials
     try:
-        decoded = decode_access_token(payload.refreshToken)
-        user_id = int(decoded.get("sub", "0"))
+        payload = decode_access_token(token)
     except Exception as exc:
-        raise HTTPException(status_code=401, detail="Invalid refresh token") from exc
+        raise HTTPException(status_code=401, detail="Invalid token") from exc
+
+    user_id = int(payload.get("sub", "0"))
     if user_id <= 0:
-        raise HTTPException(status_code=401, detail="Invalid refresh token")
+        raise HTTPException(status_code=401, detail="Invalid token")
 
-    access_token = create_access_token(user_id)
-    return APIResponse(data=RefreshTokenData(accessToken=access_token, expiresIn=7200))
+    jti = payload.get("jti")
+    exp = payload.get("exp")
+    now_ts = int(datetime.now(UTC).timestamp())
+    exp_ts = int(exp) if exp is not None else 0
+    ttl = max(1, exp_ts - now_ts) if exp_ts > now_ts else 60
 
+    await blacklist_access_jti(jti if isinstance(jti, str) else None, ttl)
+    await revoke_all_refresh_for_user(user_id)
+
+    return APIResponse(data=LogoutData())

@@ -38,6 +38,19 @@ class Settings(BaseSettings):
     #: Mock 验证码（仅当 ``sms_use_mock`` 为 True 时写入 Redis）
     sms_mock_code: str = "123456"
 
+    #: JWT 签名密钥；为空则回退为兼容旧版的 ``{app_name}-{mysql_db}-secret``（生产务必配置）
+    jwt_secret: str = ""
+
+    #: Access JWT 有效期（秒）
+    access_token_expires_seconds: int = 7200
+    #: Refresh token（Redis）有效期（秒），默认 7 天
+    refresh_token_expires_seconds: int = 604800
+
+    #: 发验证码：同一 IP 每分钟最多次数（0=不限制）
+    auth_sms_ip_limit_per_minute: int = 30
+    #: 短信登录：同一 IP 每分钟最多次数（0=不限制）
+    auth_login_ip_limit_per_minute: int = 120
+
     @property
     def sqlalchemy_database_uri(self) -> str:
         return (
