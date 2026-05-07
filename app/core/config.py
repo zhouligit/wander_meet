@@ -33,6 +33,11 @@ class Settings(BaseSettings):
     #: 必须与报备模板一致；使用 `{code}` 替换验证码
     ihuyi_sms_template: str = "您的验证码是：{code}。请不要把验证码泄露给其他人。"
 
+    #: 测试阶段为 True：不发短信、不扣费，验证码固定为 ``sms_mock_code``（上线前务必改为 False）
+    sms_use_mock: bool = True
+    #: Mock 验证码（仅当 ``sms_use_mock`` 为 True 时写入 Redis）
+    sms_mock_code: str = "123456"
+
     @property
     def sqlalchemy_database_uri(self) -> str:
         return (

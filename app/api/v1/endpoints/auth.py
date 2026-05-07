@@ -52,40 +52,56 @@ async def send_sms_code(payload: SendSMSCodeRequest) -> APIResponse[SendSMSCodeD
     if not acquired:
         raise HTTPException(status_code=429, detail="发送过于频繁，请60秒后再试")
 
-    code = _generate_sms_code()
+    if settings.sms_use_mock:
+        code = (settings.sms_mock_code or "123456").strip() or "123456"
+        if settings.app_env.lower() in ("prod", "production"):
+            logger.warning(
+                "SMS_USE_MOCK is on in production — real SMS disabled; phone=%s",
+                phone[-4:],
+            )
+        else:
+            logger.info(
+                "SMS mock: scene=%s phone=%s (code fixed by SMS_MOCK_CODE)",
+                payload.scene,
+                phone,
+            )
+    else:
+        code = _generate_sms_code()
+
     redis_key = f"wm:sms:{payload.scene}:{phone}"
     await redis_client.set(redis_key, code, ex=SMS_CODE_TTL_SECONDS)
 
-    account = (settings.ihuyi_account or "").strip()
-    password = (settings.ihuyi_password or "").strip()
-    if account and password:
-        content = (settings.ihuyi_sms_template or "").replace("{code}", code)
-        try:
-            await asyncio.to_thread(
-                send_sms_submit_sync,
-                account,
-                password,
+    if not settings.sms_use_mock:
+        account = (settings.ihuyi_account or "").strip()
+        password = (settings.ihuyi_password or "").strip()
+        if account and password:
+            content = (settings.ihuyi_sms_template or "").replace("{code}", code)
+            try:
+                await asyncio.to_thread(
+                    send_sms_submit_sync,
+                    account,
+                    password,
+                    phone,
+                    content,
+                )
+            except IhuiSmsError as exc:
+                await redis_client.delete(redis_key)
+                await redis_client.delete(rate_key)
+                raise HTTPException(status_code=502, detail=str(exc)) from exc
+        else:
+            if settings.app_env.lower() in ("prod", "production"):
+                await redis_client.delete(redis_key)
+                await redis_client.delete(rate_key)
+                raise HTTPException(
+                    status_code=503,
+                    detail="SMS service not configured (set IHUYI_ACCOUNT / IHUYI_PASSWORD)",
+                )
+            logger.warning(
+                "IHUYI not configured — dev code for scene=%s phone=%s code=%s",
+                payload.scene,
                 phone,
-                content,
+                code,
             )
-        except IhuiSmsError as exc:
-            await redis_client.delete(redis_key)
-            await redis_client.delete(rate_key)
-            raise HTTPException(status_code=502, detail=str(exc)) from exc
-    else:
-        if settings.app_env.lower() in ("prod", "production"):
-            await redis_client.delete(redis_key)
-            await redis_client.delete(rate_key)
-            raise HTTPException(
-                status_code=503,
-                detail="SMS service not configured (set IHUYI_ACCOUNT / IHUYI_PASSWORD)",
-            )
-        logger.warning(
-            "IHUYI not configured — dev code for scene=%s phone=%s code=%s",
-            payload.scene,
-            phone,
-            code,
-        )
 
     return APIResponse(data=SendSMSCodeData(expireInSeconds=SMS_CODE_TTL_SECONDS))
 
