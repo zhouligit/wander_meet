@@ -16,6 +16,7 @@ from app.services.activity_query import (
     to_utc,
     to_utc_optional,
 )
+from app.services.contact_content_filter import contact_text_blocked_reason
 from app.db.session import get_db_session
 from app.models.activity import Activity
 from app.models.activity_enrollment import ActivityEnrollment
@@ -740,6 +741,10 @@ async def send_message(
         raise HTTPException(status_code=400, detail="text is required for text message")
     if payload.msgType == "image" and not payload.imageUrl:
         raise HTTPException(status_code=400, detail="imageUrl is required for image message")
+    if payload.msgType == "text":
+        blocked = contact_text_blocked_reason(payload.text)
+        if blocked:
+            raise HTTPException(status_code=400, detail=blocked)
 
     message = ActivityMessage(
         activity_id=activity_pk,

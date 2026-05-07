@@ -16,6 +16,7 @@ from app.models.notification import Notification
 from app.models.user import User
 from app.schemas.activity import ChatMessageSender, SendMessageRequest
 from app.schemas.common import APIResponse
+from app.services.contact_content_filter import contact_text_blocked_reason
 from app.services.dm_relationship import (
     either_blocked,
     get_thread_by_users,
@@ -161,7 +162,12 @@ async def create_dm_request(
             data=DmRequestCreatedData(requestId=f"dmreq_{dup_out.id}", status="pending"),
         )
 
-    intro = (payload.introText or "").strip()[:500] or None
+    intro_raw = (payload.introText or "").strip()[:500]
+    if intro_raw:
+        blocked_intro = contact_text_blocked_reason(intro_raw)
+        if blocked_intro:
+            raise HTTPException(status_code=400, detail=blocked_intro)
+    intro = intro_raw or None
     req = DmRequest(
         activity_id=activity_pk,
         from_user_id=current_user.id,
@@ -532,6 +538,10 @@ async def send_direct_message(
         raise HTTPException(status_code=400, detail="text is required for text message")
     if payload.msgType == "image" and not payload.imageUrl:
         raise HTTPException(status_code=400, detail="imageUrl is required for image message")
+    if payload.msgType == "text":
+        blocked = contact_text_blocked_reason(payload.text)
+        if blocked:
+            raise HTTPException(status_code=400, detail=blocked)
 
     msg = DirectMessage(
         thread_id=tid,
