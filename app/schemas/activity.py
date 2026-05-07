@@ -2,7 +2,10 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field, field_serializer
 
-from app.schemas.datetime_iso import datetime_to_rfc3339_utc_z
+from app.schemas.datetime_iso import (
+    datetime_to_rfc3339_utc_z,
+    datetime_to_rfc3339_utc_z_shanghai_naive,
+)
 
 
 class ActivityCard(BaseModel):
@@ -127,7 +130,7 @@ class ActivityMemberItem(BaseModel):
 
     @field_serializer("joinedAt")
     def _ser_joined_at(self, v: datetime) -> str:
-        return datetime_to_rfc3339_utc_z(v) or ""
+        return datetime_to_rfc3339_utc_z_shanghai_naive(v) or ""
 
 
 class ActivityMembersData(BaseModel):
@@ -151,7 +154,7 @@ class ChatMessageItem(BaseModel):
 
     @field_serializer("createdAt")
     def _ser_created_at(self, v: datetime) -> str:
-        return datetime_to_rfc3339_utc_z(v) or ""
+        return datetime_to_rfc3339_utc_z_shanghai_naive(v) or ""
 
 
 class ChatMessagesData(BaseModel):

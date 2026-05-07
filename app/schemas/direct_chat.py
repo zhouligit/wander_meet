@@ -3,7 +3,7 @@ from datetime import datetime
 from pydantic import BaseModel, Field, field_serializer
 
 from app.schemas.activity import ChatMessageSender
-from app.schemas.datetime_iso import datetime_to_rfc3339_utc_z
+from app.schemas.datetime_iso import datetime_to_rfc3339_utc_z_shanghai_naive
 
 
 class CreateDmRequestBody(BaseModel):
@@ -24,7 +24,7 @@ class DmRequestItem(BaseModel):
 
     @field_serializer("createdAt", "respondedAt")
     def _ser_times(self, v: datetime | None) -> str | None:
-        return datetime_to_rfc3339_utc_z(v)
+        return datetime_to_rfc3339_utc_z_shanghai_naive(v)
 
 
 class DmRequestListData(BaseModel):
@@ -57,7 +57,7 @@ class DirectMessageItem(BaseModel):
 
     @field_serializer("createdAt")
     def _ser_created_at(self, v: datetime) -> str:
-        return datetime_to_rfc3339_utc_z(v) or ""
+        return datetime_to_rfc3339_utc_z_shanghai_naive(v) or ""
 
 
 class DirectMessagesData(BaseModel):
@@ -76,7 +76,7 @@ class MyDirectChatItem(BaseModel):
 
     @field_serializer("lastMessageAt")
     def _ser_last_at(self, v: datetime | None) -> str | None:
-        return datetime_to_rfc3339_utc_z(v)
+        return datetime_to_rfc3339_utc_z_shanghai_naive(v)
 
 
 class MyDirectChatsData(BaseModel):
