@@ -380,6 +380,15 @@ async def create_activity(
         activity_status="published",
     )
     db.add(activity)
+    await db.flush()
+    # 发布者默认占 1 席、已加入（与报名记录一致，便于人数与群聊权限）
+    db.add(
+        ActivityEnrollment(
+            activity_id=activity.id,
+            user_id=current_user.id,
+            status="joined",
+        )
+    )
     await db.commit()
     await db.refresh(activity)
 
@@ -401,8 +410,8 @@ async def create_activity(
         feeAmount=activity.fee_amount_cents,
         activityStatus=effective_activity_status(activity, now_create),
         organizer=_organizer_for_detail(current_user),
-        enrolledCount=0,
-        myEnrollment=None,
+        enrolledCount=1,
+        myEnrollment=MyEnrollment(status="joined"),
     )
     logger.info(
         "create_activity user_id=%s request_id=%s activity_id=%s city=%s category=%s",
@@ -631,6 +640,7 @@ async def activity_members(
         .where(
             ActivityEnrollment.activity_id == activity_pk,
             ActivityEnrollment.status == "joined",
+            ActivityEnrollment.user_id != activity.organizer_id,
         )
         .order_by(ActivityEnrollment.created_at.asc())
         .offset((page - 1) * pageSize)
