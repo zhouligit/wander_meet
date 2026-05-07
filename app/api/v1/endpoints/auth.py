@@ -1,9 +1,15 @@
+import asyncio
+import logging
+import secrets
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import get_settings
 from app.core.security import create_access_token, decode_access_token, hash_phone
 from app.db.session import get_db_session, redis_client
+from app.services.ihuyi_sms import IhuiSmsError, send_sms_submit_sync
 from app.models.user import User
 from app.schemas.auth import (
     LoginUser,
@@ -18,15 +24,51 @@ from app.schemas.common import APIResponse
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 SMS_CODE_TTL_SECONDS = 1800
-FIXED_SMS_CODE = "123456"
+
+logger = logging.getLogger(__name__)
+
+
+def _generate_sms_code() -> str:
+    """6 位数字验证码（100000–999999）。"""
+    return str(secrets.randbelow(900000) + 100000)
 
 
 @router.post("/sms/send")
 async def send_sms_code(payload: SendSMSCodeRequest) -> APIResponse[SendSMSCodeData]:
-    code = FIXED_SMS_CODE
+    settings = get_settings()
+    code = _generate_sms_code()
     redis_key = f"wm:sms:{payload.scene}:{payload.phone}"
     await redis_client.set(redis_key, code, ex=SMS_CODE_TTL_SECONDS)
-    # v0.1 demo env: write code to logs/redis only; integrate SMS provider later.
+
+    account = (settings.ihuyi_account or "").strip()
+    password = (settings.ihuyi_password or "").strip()
+    if account and password:
+        content = (settings.ihuyi_sms_template or "").replace("{code}", code)
+        try:
+            await asyncio.to_thread(
+                send_sms_submit_sync,
+                account,
+                password,
+                payload.phone,
+                content,
+            )
+        except IhuiSmsError as exc:
+            await redis_client.delete(redis_key)
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+    else:
+        if settings.app_env.lower() in ("prod", "production"):
+            await redis_client.delete(redis_key)
+            raise HTTPException(
+                status_code=503,
+                detail="SMS service not configured (set IHUYI_ACCOUNT / IHUYI_PASSWORD)",
+            )
+        logger.warning(
+            "IHUYI not configured — dev code for scene=%s phone=%s code=%s",
+            payload.scene,
+            payload.phone,
+            code,
+        )
+
     return APIResponse(data=SendSMSCodeData(expireInSeconds=SMS_CODE_TTL_SECONDS))
 
 

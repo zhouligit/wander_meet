@@ -26,6 +26,13 @@ class Settings(BaseSettings):
     redis_db: int = 0
     redis_password: str = ""
 
+    #: 互亿无线 APIID（空则不调用短信网关；开发环境可将验证码打日志）
+    ihuyi_account: str = ""
+    #: 互亿无线 APIKEY / 动态密码
+    ihuyi_password: str = ""
+    #: 必须与报备模板一致；使用 `{code}` 替换验证码
+    ihuyi_sms_template: str = "您的验证码是：{code}。请不要把验证码泄露给其他人。"
+
     @property
     def sqlalchemy_database_uri(self) -> str:
         return (
