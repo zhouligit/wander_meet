@@ -4,6 +4,10 @@
 基路径示例：`https://api.wandermeet.example.com/api/v1/wm`  
 鉴权：`Authorization: Bearer <accessToken>`（除登录、发送验证码、部分 meta 外均需携带）
 
+> **变更备忘（2026-05-06）**  
+> - `GET/PATCH /me` 补写 `gender`（与当前后端一致）。  
+> - 新增 **§5.1 规划：资料与引导扩展（草案）**，与 `doc/WanderMeet_Nomadtable_Onboarding_对照.md` §5、`doc/TODO_Backend_NextSteps.md` §5 对齐；**草案字段未全部落地代码前以本节标注为准**。
+
 统一响应外层：
 
 | 字段 | 类型 | 说明 |
@@ -185,11 +189,12 @@ Authorization: Bearer wm_at_xxx
 | 字段 | 类型 | 说明 |
 | --- | --- | --- |
 | userId | string | 用户 ID |
-| phoneMasked | string | 脱敏手机号，如 `138****8000` |
+| phoneMasked | string | 脱敏手机号（当前实现多为占位脱敏，见后端实现） |
 | nickname | string | 昵称 |
 | avatarUrl | string \| null | 头像 URL |
+| gender | string \| null | `male` \| `female` \| `unspecified`，未填为 `null` |
 | bio | string | 个人简介 |
-| tags | array | 标签，如 `["digital_nomad","weekend"]` |
+| tags | array | 标签字符串列表，最多 20 个 |
 | status | string | `active` \| `banned` \| `restricted` |
 | verification | object | 认证状态摘要（见下方） |
 
@@ -211,6 +216,7 @@ Authorization: Bearer wm_at_xxx
     "phoneMasked": "138****8000",
     "nickname": "旅人小王",
     "avatarUrl": "https://cdn.example.com/a.png",
+    "gender": "male",
     "bio": "周末 hiking · coffee",
     "tags": ["digital_nomad", "weekend"],
     "status": "active",
@@ -265,13 +271,15 @@ Authorization: Bearer wm_at_xxx
 | nickname | body | string | 否 | 昵称 |
 | avatarUrl | body | string | 否 | 头像 URL（若先直传 OSS，可为上传后 URL） |
 | bio | body | string | 否 | 个人简介 |
-| tags | body | array | 否 | 标签 ID 或枚举值列表 |
+| tags | body | array | 否 | 标签字符串列表，**最多 20 条** |
+| gender | body | string | 否 | `male` \| `female` \| `unspecified`；**若服务端已保存性别则不可修改**（重复提交同值除外） |
 
 ### 请求参数示例（JSON）
 
 ```json
 {
   "nickname": "小王在北京",
+  "gender": "female",
   "bio": "周末 hiking · coffee",
   "tags": ["digital_nomad", "solo_travel"]
 }
@@ -292,6 +300,7 @@ Authorization: Bearer wm_at_xxx
     "phoneMasked": "138****8000",
     "nickname": "小王在北京",
     "avatarUrl": "https://cdn.example.com/a.png",
+    "gender": "male",
     "bio": "周末 hiking · coffee",
     "tags": ["digital_nomad", "solo_travel"],
     "status": "active",
@@ -302,6 +311,25 @@ Authorization: Bearer wm_at_xxx
   }
 }
 ```
+
+---
+
+### `GET/PATCH /me` 规划扩展（草案 · 未全部实现）
+
+以下字段在 **`doc/WanderMeet_Nomadtable_Onboarding_对照.md` §5** 中与引导全量拆分对齐；**落地前可能仅有文档、无服务端字段**。实现后 `GET /me`、`PATCH /me` 将一并扩展（camelCase），并与 Alembic `users` 表增量一致。
+
+| 字段（草案） | 类型（草案） | 说明 |
+| --- | --- | --- |
+| countryCode | string \| null | 国家/地区，如 ISO 3166-1 alpha-2 |
+| travelerRoles | array | 旅行身份，**最多 2 条** |
+| currentPlace | string \| null | 当前城市/地点文案 |
+| stayKind | string \| null | 停留类型，如 `indefinite` / `fixed_dates` |
+| stayEndAt | string \| null | ISO 8601，与 `stayKind` 联用 |
+| acquisitionSource | string \| null | 渠道归因枚举 |
+| notifyPrefs | object \| null | 通知偏好 JSON |
+| showDistance | boolean | 是否对他人展示距离相关信息 |
+
+可选新接口（同为草案）：`GET /api/v1/wm/meta/onboarding`（兴趣词表、枚举）、`GET /api/v1/wm/meta/stats`（在线人数等）。详见对照文档 §5.4。
 
 ---
 

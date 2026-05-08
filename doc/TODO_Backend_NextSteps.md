@@ -1,6 +1,6 @@
 # WanderMeet Backend TODO（接口联通后）
 
-更新时间：2026-04-30  
+更新时间：2026-05-06  
 适用范围：当前 FastAPI + MySQL + Redis 后端
 
 ---
@@ -18,7 +18,7 @@
   - 现状：`users.avatar_url` 与 `PATCH /me` 的 `avatarUrl` 已可写库；`GET /me` 会返回 `avatarUrl`。  
   - 后端待做：`POST /me/avatar/upload-url` 仍返回占位地址，**需接阿里云 OSS（或同类）预签名上传**，并约定 `objectKey`、直传成功后的**可访问公网 URL** 规则。  
   - 小程序待做（`lv_ju/travel-together`）：`profile-edit` 目前仅为「昵称首字母」展示，**无** `chooseImage` / 直传 / `updateMe({ avatarUrl })` 回写；个人中心展示需改为优先 `image` + `avatarUrl`（有则显图、无则首字）。  
-- [ ] `GET /api/v1/wm/me` 中 `tags` 仍为固定空数组，未落库。
+- [x] `users.tags` 已落库，`GET/PATCH /me` 已读写 `tags`（小程序编辑页若未接 UI，仍可能长期为空数组）。
 - [ ] `GET /api/v1/wm/me` 中 `phoneMasked` 仍为占位逻辑（非真实手机号脱敏流程）。
 
 ## 1.3 认证与风控
@@ -74,3 +74,31 @@
 
 - 当前接口可联调、主链路可跑通。
 - 本文档用于将“可跑通版本”推进到“可上线版本”的执行清单。
+
+---
+
+## 5. 资料与引导（全量拆分）— 对 API / DB 的增量
+
+需求拆解与页面清单见 **`doc/WanderMeet_Nomadtable_Onboarding_对照.md`**；本节只列**后端待办与接口面向**。
+
+### 5.1 数据库（`users` 表）
+
+- [ ] 新增列（草案名）：`country_code`、`traveler_roles`（JSON）、`current_place`、`stay_kind`、`stay_end_at`、`acquisition_source`、`notify_prefs`（JSON）、`show_distance` 等 — **详细类型与含义见对照文档 §5**。
+- [ ] 配套 **Alembic 迁移**；上线注意可空与默认值。
+
+### 5.2 接口（`MeData` / `UpdateMeRequest`）
+
+- [ ] `GET /me`、`PATCH /me` 扩展字段与校验（旅行身份个数、`stay_end_at` 与 `stay_kind` 一致性等）。
+- [ ] （可选）`GET /meta/onboarding`：兴趣词表、归因枚举、旅行身份枚举，供小程序分屏 Chip。
+- [ ] （可选）在线人数等运营数字：`GET /meta/stats` 或接入现有监控 — 口径需产品定义。
+
+### 5.3 其它（与引导相关）
+
+- [ ] 头像：`POST /me/avatar/upload-url` 接 OSS（见 §1.2）。
+- [ ] 通知偏好若落库需与后续推送通道对齐；若仅本地存储可暂不实现后端字段。
+
+---
+
+## 6. 备注（引导文档）
+
+- 对照文档中的 **§5 接口与数据库变动草案** 随评审更新；实现后以代码与 OpenAPI 为准，并回写本文 §5 勾选状态。
