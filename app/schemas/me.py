@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, field_serializer
+from pydantic import BaseModel, Field, field_serializer
 
 from app.schemas.datetime_iso import (
     datetime_to_rfc3339_utc_z,
@@ -27,6 +27,15 @@ class MeData(BaseModel):
     tags: list[str]
     status: str
     verification: VerificationSummary
+    countryCode: str | None = None
+    travelerRoles: list[str] = Field(default_factory=list)
+    currentPlace: str | None = None
+    stayKind: str | None = None
+    stayEndAt: str | None = None
+    acquisitionSource: str | None = None
+    notifyPrefs: dict | None = None
+    showDistance: bool = True
+    onboardingCompletedAt: str | None = None
 
 
 class UpdateMeRequest(BaseModel):
@@ -35,6 +44,15 @@ class UpdateMeRequest(BaseModel):
     bio: str | None = None
     tags: list[str] | None = None
     gender: UserGender | None = None
+    countryCode: str | None = None
+    travelerRoles: list[str] | None = None
+    currentPlace: str | None = None
+    stayKind: str | None = None
+    stayEndAt: str | None = None
+    acquisitionSource: str | None = None
+    notifyPrefs: dict | None = None
+    showDistance: bool | None = None
+    completeOnboarding: bool | None = None
 
 
 class MyActivitiesItem(BaseModel):

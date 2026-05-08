@@ -13,6 +13,7 @@ from app.models.activity_message import ActivityMessage
 from app.models.user import User
 from app.models.user_chat_read import UserChatRead
 from app.schemas.common import APIResponse
+from app.schemas.datetime_iso import datetime_to_rfc3339_utc_z
 from app.schemas.me import (
     MeData,
     MyActivitiesData,
@@ -28,6 +29,66 @@ from app.schemas.me import (
 router = APIRouter(prefix="/me", tags=["me"])
 
 EPOCH_UTC = datetime(1970, 1, 1, tzinfo=UTC)
+
+_STAY_KINDS = frozenset({"indefinite", "fixed_dates"})
+_TRAVELER_ROLE_MAX = 2
+
+
+def _phone_masked(user: User) -> str:
+    p = user.phone
+    if p and len(p) >= 11:
+        return f"{p[:3]}****{p[-4:]}"
+    if len(user.phone_hash) >= 4:
+        return f"***{user.phone_hash[-4:]}"
+    return "***********"
+
+
+def _traveler_roles_list(user: User) -> list[str]:
+    raw = user.traveler_roles
+    if not raw or not isinstance(raw, list):
+        return []
+    out: list[str] = []
+    for x in raw[:_TRAVELER_ROLE_MAX]:
+        if isinstance(x, str) and x.strip():
+            out.append(x.strip()[:48])
+    return out[:_TRAVELER_ROLE_MAX]
+
+
+def _parse_iso_datetime(value: str | None) -> datetime | None:
+    if value is None or not str(value).strip():
+        return None
+    s = str(value).strip().replace("Z", "+00:00")
+    dt = datetime.fromisoformat(s)
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=UTC)
+    return dt.astimezone(UTC)
+
+
+def build_me_data(user: User) -> MeData:
+    g = user.gender
+    if g is not None and g not in ("male", "female", "unspecified"):
+        g = None
+    np = user.notify_prefs if isinstance(user.notify_prefs, dict) else None
+    return MeData(
+        userId=f"u_{user.id}",
+        phoneMasked=_phone_masked(user),
+        nickname=user.nickname,
+        avatarUrl=user.avatar_url,
+        gender=g,
+        bio=bio_from_user(user),
+        tags=tags_from_user(user),
+        status=user.status,
+        verification=VerificationSummary(status="none", canCreateActivity=True),
+        countryCode=(user.country_code or "").strip() or None,
+        travelerRoles=_traveler_roles_list(user),
+        currentPlace=(user.current_place or "").strip() or None,
+        stayKind=user.stay_kind,
+        stayEndAt=datetime_to_rfc3339_utc_z(user.stay_end_at),
+        acquisitionSource=(user.acquisition_source or "").strip() or None,
+        notifyPrefs=np,
+        showDistance=bool(user.show_distance),
+        onboardingCompletedAt=datetime_to_rfc3339_utc_z(user.onboarding_completed_at),
+    )
 
 
 @router.get("/stats")
@@ -57,25 +118,7 @@ async def my_stats(
 
 @router.get("")
 async def get_me(current_user: User = Depends(get_current_user)) -> APIResponse[MeData]:
-    phone_masked = "***********"
-    if len(current_user.phone_hash) >= 4:
-        phone_masked = f"***{current_user.phone_hash[-4:]}"
-    g = current_user.gender
-    if g is not None and g not in ("male", "female", "unspecified"):
-        g = None
-    return APIResponse(
-        data=MeData(
-            userId=f"u_{current_user.id}",
-            phoneMasked=phone_masked,
-            nickname=current_user.nickname,
-            avatarUrl=current_user.avatar_url,
-            gender=g,
-            bio=bio_from_user(current_user),
-            tags=tags_from_user(current_user),
-            status=current_user.status,
-            verification=VerificationSummary(status="none", canCreateActivity=True),
-        )
-    )
+    return APIResponse(data=build_me_data(current_user))
 
 
 @router.patch("")
@@ -85,7 +128,10 @@ async def update_me(
     current_user: User = Depends(get_current_user),
 ) -> APIResponse[MeData]:
     if payload.nickname is not None:
-        current_user.nickname = payload.nickname
+        nn = (payload.nickname or "").strip()
+        if not nn:
+            raise HTTPException(status_code=400, detail="nickname is required when provided")
+        current_user.nickname = nn[:32]
     if payload.avatarUrl is not None:
         current_user.avatar_url = payload.avatarUrl
     if payload.bio is not None:
@@ -99,9 +145,42 @@ async def update_me(
                 raise HTTPException(status_code=400, detail="性别提交后不可修改")
         else:
             current_user.gender = payload.gender
+    if payload.countryCode is not None:
+        cc = (payload.countryCode or "").strip().upper()
+        current_user.country_code = cc[:8] if cc else None
+    if payload.travelerRoles is not None:
+        roles: list[str] = []
+        for x in payload.travelerRoles[:_TRAVELER_ROLE_MAX]:
+            if isinstance(x, str) and x.strip():
+                roles.append(x.strip()[:48])
+        current_user.traveler_roles = roles[:_TRAVELER_ROLE_MAX] if roles else None
+    if payload.currentPlace is not None:
+        cp = (payload.currentPlace or "").strip()
+        current_user.current_place = cp[:256] if cp else None
+    if payload.stayKind is not None:
+        sk = (payload.stayKind or "").strip()
+        if sk and sk not in _STAY_KINDS:
+            raise HTTPException(status_code=400, detail="stayKind is invalid")
+        current_user.stay_kind = sk if sk else None
+    if payload.stayEndAt is not None:
+        if not str(payload.stayEndAt).strip():
+            current_user.stay_end_at = None
+        else:
+            current_user.stay_end_at = _parse_iso_datetime(payload.stayEndAt)
+    if payload.acquisitionSource is not None:
+        ac = (payload.acquisitionSource or "").strip()
+        current_user.acquisition_source = ac[:64] if ac else None
+    if payload.notifyPrefs is not None:
+        if not isinstance(payload.notifyPrefs, dict):
+            raise HTTPException(status_code=400, detail="notifyPrefs must be an object")
+        current_user.notify_prefs = dict(payload.notifyPrefs)
+    if payload.showDistance is not None:
+        current_user.show_distance = bool(payload.showDistance)
+    if payload.completeOnboarding is True:
+        current_user.onboarding_completed_at = datetime.now(UTC)
     await db.commit()
     await db.refresh(current_user)
-    return await get_me(current_user=current_user)
+    return APIResponse(data=build_me_data(current_user))
 
 
 @router.get("/activities")

@@ -21,6 +21,7 @@ class LoginUser(BaseModel):
     avatarUrl: str | None = None
     gender: str | None = None
     status: str
+    onboardingCompletedAt: str | None = None
 
 
 class SMSLoginData(BaseModel):

@@ -18,6 +18,7 @@ from app.services.ihuyi_sms import IhuiSmsError, send_sms_submit_sync
 from app.services.ip_rate_limit import enforce_auth_ip_rate_limit
 from app.services.phone_validation import parse_cn_mobile
 from app.models.user import User
+from app.schemas.datetime_iso import datetime_to_rfc3339_utc_z
 from app.schemas.auth import (
     LoginUser,
     LogoutData,
@@ -162,6 +163,7 @@ async def sms_login(
             avatarUrl=user.avatar_url,
             gender=user.gender,
             status=user.status,
+            onboardingCompletedAt=datetime_to_rfc3339_utc_z(user.onboarding_completed_at),
         ),
     )
     return APIResponse(data=response_data)

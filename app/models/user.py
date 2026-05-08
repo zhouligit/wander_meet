@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import DateTime, JSON, String, Text, func
+from sqlalchemy import Boolean, DateTime, JSON, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -17,6 +17,19 @@ class User(Base):
     avatar_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
     bio: Mapped[str | None] = mapped_column(Text, nullable=True)
     tags: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    country_code: Mapped[str | None] = mapped_column(String(8), nullable=True)
+    traveler_roles: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    current_place: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    stay_kind: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    stay_end_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    acquisition_source: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    notify_prefs: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    show_distance: Mapped[bool] = mapped_column(Boolean(), default=True)
+    onboarding_completed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     status: Mapped[str] = mapped_column(String(16), default="active")
     role: Mapped[str] = mapped_column(String(16), default="user")
     created_at: Mapped[datetime] = mapped_column(
