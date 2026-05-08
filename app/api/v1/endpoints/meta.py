@@ -26,6 +26,7 @@ async def activity_categories() -> APIResponse[CategoryData]:
         CategoryItem(categoryId="indie", name="副业·独立开发"),
         CategoryItem(categoryId="language", name="语言交换"),
         CategoryItem(categoryId="dining", name="约饭·探店"),
+        CategoryItem(categoryId="photography", name="摄影扫街"),
     ]
     return APIResponse(data=CategoryData(categories=categories))
 
