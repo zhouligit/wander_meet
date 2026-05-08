@@ -47,11 +47,15 @@ async def _limit_sms_send_ip(request: Request) -> None:
     await enforce_auth_ip_rate_limit(request, "sms_send")
 
 
+# 别名：历史上装饰器曾写为 Depends(_limit_sms_send)，未升级的服务器仍会引用该名
+_limit_sms_send = _limit_sms_send_ip
+
+
 async def _limit_sms_login_ip(request: Request) -> None:
     await enforce_auth_ip_rate_limit(request, "sms_login")
 
 
-@router.post("/sms/send", dependencies=[Depends(_limit_sms_send_ip)])
+@router.post("/sms/send", dependencies=[Depends(_limit_sms_send)])
 async def send_sms_code(payload: SendSMSCodeRequest) -> APIResponse[SendSMSCodeData]:
     phone = parse_cn_mobile(payload.phone)
     if phone is None:
