@@ -20,6 +20,9 @@ class Settings(BaseSettings):
     mysql_user: str = "root"
     mysql_password: str = "root"
     mysql_db: str = "wandermeet"
+    #: 连接池回收周期（秒）。须 **小于** MySQL ``wait_timeout``（常见 28800≈8h），否则服务端会先掐连接，
+    #: 池里归还连接时可能出现 ``BrokenPipeError``。云数据库若空闲超时较短（如 60s），请改为 ``55`` 等。
+    mysql_pool_recycle_seconds: int = 28000
 
     redis_host: str = "127.0.0.1"
     redis_port: int = 6379
