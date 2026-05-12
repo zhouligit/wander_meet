@@ -122,21 +122,14 @@ async def send_sms_code(payload: SendSMSCodeRequest) -> APIResponse[SendSMSCodeD
                 await redis_client.delete(rate_key)
                 raise HTTPException(status_code=502, detail=str(exc)) from exc
         else:
-            if settings.app_env.lower() in ("prod", "production"):
-                await redis_client.delete(redis_key)
-                await redis_client.delete(rate_key)
-                raise HTTPException(
-                    status_code=503,
-                    detail=(
-                        "SMS service not configured: set ALIYUN_ACCESS_KEY_ID, "
-                        "ALIYUN_ACCESS_KEY_SECRET, ALIYUN_SMS_SIGN_NAME, ALIYUN_SMS_TEMPLATE_CODE"
-                    ),
-                )
-            logger.warning(
-                "Aliyun SMS not configured — dev code for scene=%s phone=%s code=%s",
-                payload.scene,
-                phone,
-                code,
+            await redis_client.delete(redis_key)
+            await redis_client.delete(rate_key)
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    "SMS service not configured: set ALIYUN_ACCESS_KEY_ID, "
+                    "ALIYUN_ACCESS_KEY_SECRET, ALIYUN_SMS_SIGN_NAME, ALIYUN_SMS_TEMPLATE_CODE"
+                ),
             )
 
     return APIResponse(data=SendSMSCodeData(expireInSeconds=ttl))
