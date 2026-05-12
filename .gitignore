@@ -7,6 +7,7 @@ __pycache__/
 
 # Virtual environments
 .venv/
+.venv-soft-reg/
 venv/
 env/
 
@@ -49,3 +50,6 @@ logs/
 *.sqlite3
 *.db
 tmp/
+
+# 软著：鉴别材料 PDF 由脚本生成，不纳入版本库（源稿见 doc/soft_registration/manual_content_zh.txt）
+doc/soft_registration/*.pdf
