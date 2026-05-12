@@ -1,5 +1,5 @@
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -53,16 +53,25 @@ async def delete_block(
 
 @router.get("")
 async def list_blocks(
+    page: int = Query(1, ge=1),
+    pageSize: int = Query(20, ge=1, le=50),
     db: AsyncSession = Depends(get_db_session),
     current_user: User = Depends(get_current_user),
 ) -> APIResponse[BlockListData]:
+    base_filter = UserBlock.blocker_id == current_user.id
+    total = (
+        await db.execute(select(func.count()).select_from(UserBlock).where(base_filter))
+    ).scalar_one()
+
     rows = (
         (
             await db.execute(
                 select(UserBlock, User)
                 .join(User, User.id == UserBlock.blocked_id)
-                .where(UserBlock.blocker_id == current_user.id)
+                .where(base_filter)
                 .order_by(UserBlock.id.desc())
+                .offset((page - 1) * pageSize)
+                .limit(pageSize)
             )
         )
         .all()
@@ -77,7 +86,10 @@ async def list_blocks(
                     createdAt=b.created_at,
                 )
                 for b, u in rows
-            ]
+            ],
+            total=int(total),
+            page=page,
+            pageSize=pageSize,
         )
     )
 

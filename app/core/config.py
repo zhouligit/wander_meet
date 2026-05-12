@@ -23,6 +23,10 @@ class Settings(BaseSettings):
     #: 连接池回收周期（秒）。须 **小于** MySQL ``wait_timeout``（常见 28800≈8h），否则服务端会先掐连接，
     #: 池里归还连接时可能出现 ``BrokenPipeError``。云数据库若空闲超时较短（如 60s），请改为 ``55`` 等。
     mysql_pool_recycle_seconds: int = 28000
+    #: 异步引擎连接池大小（每 worker 常驻连接数）。小内存机可保持默认 3；高并发可调大并与 ``max_connections`` 对齐。
+    mysql_pool_size: int = 3
+    #: 超出 pool_size 时允许的临时连接上限。单 worker 峰值连接 ≈ pool_size + max_overflow。
+    mysql_max_overflow: int = 2
 
     redis_host: str = "127.0.0.1"
     redis_port: int = 6379

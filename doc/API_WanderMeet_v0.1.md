@@ -1100,11 +1100,21 @@ Authorization: Bearer wm_at_xxx
 
 ### `GET /api/v1/wm/blocks`
 
+### 请求参数
+
+| 参数 | 位置 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- | --- |
+| page | query | number | 否 | 页码，默认 1 |
+| pageSize | query | number | 否 | 每页条数，默认 20，最大 50 |
+
 ### 响应 `data`
 
 | 字段 | 类型 | 说明 |
 | --- | --- | --- |
 | list | array | 被拉黑用户简要信息 + createdAt |
+| total | number | 总条数 |
+| page | number | 当前页 |
+| pageSize | number | 每页条数 |
 
 ---
 

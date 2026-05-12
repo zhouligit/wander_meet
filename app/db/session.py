@@ -10,6 +10,8 @@ settings = get_settings()
 _kw = {
     "pool_pre_ping": True,
     "echo": settings.sql_echo,
+    "pool_size": settings.mysql_pool_size,
+    "max_overflow": settings.mysql_max_overflow,
 }
 # 主动轮换连接，避免 MySQL 先断开空闲 TCP 后池中仍为「半死不活」连接，归还池时 close 触发 Broken pipe
 if settings.mysql_pool_recycle_seconds > 0:

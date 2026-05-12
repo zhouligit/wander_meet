@@ -20,4 +20,7 @@ class BlockListItem(BaseModel):
 
 class BlockListData(BaseModel):
     list: list[BlockListItem]
+    total: int
+    page: int
+    pageSize: int
 
