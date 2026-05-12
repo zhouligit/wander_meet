@@ -4,7 +4,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
+    #: 忽略 .env 中已废弃或未声明的键（例如旧版互亿 ``IHUYI_*``），避免升级后 Alembic / 应用启动报 ValidationError
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     app_name: str = "WanderMeet API"
     app_env: str = "dev"
