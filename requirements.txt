@@ -10,3 +10,4 @@ alembic
 pymysql
 PyJWT
 cryptography
+alibabacloud-dysmsapi20170525>=4.2.0,<5

@@ -83,7 +83,7 @@
 
 - Implement create activity, enroll/cancel, and activity detail APIs.
 - Add verification and report/block modules.
-- Integrate real SMS provider and JWT refresh token flow.
+- SMS 验证码：生产环境配置阿里云 **SendSms**（见 `.env.example` 中 `ALIYUN_*`；[OpenAPI 文档](https://next.api.aliyun.com/api/Dysmsapi/2017-05-25/SendSms)）；JWT refresh token 流程已接入。
 
 ## Ops Scripts
 

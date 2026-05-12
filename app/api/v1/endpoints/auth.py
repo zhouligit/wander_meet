@@ -14,7 +14,7 @@ from app.core.security import create_access_token, decode_access_token, hash_pho
 from app.db.session import get_db_session, redis_client
 from app.services.auth_blacklist import blacklist_access_jti
 from app.services.auth_refresh import issue_refresh_token, rotate_refresh_token, revoke_all_refresh_for_user
-from app.services.ihuyi_sms import IhuiSmsError, send_sms_submit_sync
+from app.services.aliyun_sms import AliyunSmsError, send_sms_aliyun_sync
 from app.services.ip_rate_limit import enforce_auth_ip_rate_limit
 from app.services.phone_validation import parse_cn_mobile
 from app.models.user import User
@@ -32,8 +32,6 @@ from app.schemas.auth import (
 from app.schemas.common import APIResponse
 
 router = APIRouter(prefix="/auth", tags=["auth"])
-SMS_CODE_TTL_SECONDS = 300  # 5 分钟
-SMS_SEND_MIN_INTERVAL_SECONDS = 60
 
 logger = logging.getLogger(__name__)
 
@@ -62,15 +60,20 @@ async def send_sms_code(payload: SendSMSCodeRequest) -> APIResponse[SendSMSCodeD
         raise HTTPException(status_code=400, detail="手机号格式不正确")
 
     settings = get_settings()
+    ttl = max(60, int(settings.sms_code_ttl_seconds))
+    send_gap = max(15, int(settings.sms_send_min_interval_seconds))
     rate_key = f"wm:sms:send:rate:{phone}"
     acquired = await redis_client.set(
         rate_key,
         "1",
-        ex=SMS_SEND_MIN_INTERVAL_SECONDS,
+        ex=send_gap,
         nx=True,
     )
     if not acquired:
-        raise HTTPException(status_code=429, detail="发送过于频繁，请60秒后再试")
+        raise HTTPException(
+            status_code=429,
+            detail=f"发送过于频繁，请{send_gap}秒后再试",
+        )
 
     if settings.sms_use_mock:
         code = (settings.sms_mock_code or "123456").strip() or "123456"
@@ -89,22 +92,32 @@ async def send_sms_code(payload: SendSMSCodeRequest) -> APIResponse[SendSMSCodeD
         code = _generate_sms_code()
 
     redis_key = f"wm:sms:{payload.scene}:{phone}"
-    await redis_client.set(redis_key, code, ex=SMS_CODE_TTL_SECONDS)
+    await redis_client.set(redis_key, code, ex=ttl)
 
     if not settings.sms_use_mock:
-        account = (settings.ihuyi_account or "").strip()
-        password = (settings.ihuyi_password or "").strip()
-        if account and password:
-            content = (settings.ihuyi_sms_template or "").replace("{code}", code)
+        ak = (settings.aliyun_access_key_id or "").strip()
+        sk = (settings.aliyun_access_key_secret or "").strip()
+        sign = (settings.aliyun_sms_sign_name or "").strip()
+        tpl = (settings.aliyun_sms_template_code or "").strip()
+        if ak and sk and sign and tpl:
+            endpoint = (settings.aliyun_sms_endpoint or "dysmsapi.aliyuncs.com").strip()
+            region = (settings.aliyun_sms_region_id or "cn-hangzhou").strip()
             try:
+                template_param: dict = {"code": code}
+                if settings.aliyun_sms_template_include_minute:
+                    template_param["minute"] = str(max(1, ttl // 60))
                 await asyncio.to_thread(
-                    send_sms_submit_sync,
-                    account,
-                    password,
-                    phone,
-                    content,
+                    send_sms_aliyun_sync,
+                    ak,
+                    sk,
+                    endpoint=endpoint,
+                    region_id=region,
+                    phone_numbers=phone,
+                    sign_name=sign,
+                    template_code=tpl,
+                    template_param=template_param,
                 )
-            except IhuiSmsError as exc:
+            except AliyunSmsError as exc:
                 await redis_client.delete(redis_key)
                 await redis_client.delete(rate_key)
                 raise HTTPException(status_code=502, detail=str(exc)) from exc
@@ -114,16 +127,19 @@ async def send_sms_code(payload: SendSMSCodeRequest) -> APIResponse[SendSMSCodeD
                 await redis_client.delete(rate_key)
                 raise HTTPException(
                     status_code=503,
-                    detail="SMS service not configured (set IHUYI_ACCOUNT / IHUYI_PASSWORD)",
+                    detail=(
+                        "SMS service not configured: set ALIYUN_ACCESS_KEY_ID, "
+                        "ALIYUN_ACCESS_KEY_SECRET, ALIYUN_SMS_SIGN_NAME, ALIYUN_SMS_TEMPLATE_CODE"
+                    ),
                 )
             logger.warning(
-                "IHUYI not configured — dev code for scene=%s phone=%s code=%s",
+                "Aliyun SMS not configured — dev code for scene=%s phone=%s code=%s",
                 payload.scene,
                 phone,
                 code,
             )
 
-    return APIResponse(data=SendSMSCodeData(expireInSeconds=SMS_CODE_TTL_SECONDS))
+    return APIResponse(data=SendSMSCodeData(expireInSeconds=ttl))
 
 
 @router.post("/sms/login", dependencies=[Depends(_limit_sms_login_ip)])
