@@ -1,5 +1,13 @@
 # WanderMeet Backend (FastAPI)
 
+## 前端（旅聚小程序）
+
+微信小程序 **uni-app** 工程与本仓库分离，本地常见路径为：
+
+**`/Users/zhouli/data/code/chuangye/lv_ju/travel-together`**
+
+（全局样式与设计变量：`src/uni.scss`。）
+
 ## Tech Stack
 
 - Python + FastAPI
