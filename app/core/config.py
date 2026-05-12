@@ -1,6 +1,17 @@
 from functools import lru_cache
+from typing import Annotated, Literal
 
+from pydantic import BeforeValidator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+def _lower_strip(v):
+    if v is None:
+        return "ihuyi"
+    if isinstance(v, str):
+        s = v.strip().lower()
+        return s if s in ("ihuyi", "aliyun") else "ihuyi"
+    return v
 
 
 class Settings(BaseSettings):
@@ -34,7 +45,17 @@ class Settings(BaseSettings):
     redis_db: int = 0
     redis_password: str = ""
 
-    #: 阿里云 AccessKey（``SMS_USE_MOCK=false`` 时用于 SendSms；与 RAM 子账号权限 ``AliyunDysmsFullAccess`` 或自定义短信权限）
+    #: 非 Mock 时短信渠道：``ihuyi``=互亿无线（默认），``aliyun``=阿里云 SendSms
+    sms_provider: Annotated[Literal["ihuyi", "aliyun"], BeforeValidator(_lower_strip)] = "ihuyi"
+
+    #: 互亿无线 APIID（``SMS_PROVIDER=ihuyi`` 且 ``SMS_USE_MOCK=false`` 时必填）
+    ihuyi_account: str = ""
+    #: 互亿无线 APIKEY / 接口密码
+    ihuyi_password: str = ""
+    #: 须与报备模板一致；使用 ``{code}`` 替换验证码
+    ihuyi_sms_template: str = "您的验证码是：{code}。请不要把验证码泄露给其他人。"
+
+    #: 阿里云 AccessKey（``SMS_PROVIDER=aliyun`` 时使用）
     aliyun_access_key_id: str = ""
     aliyun_access_key_secret: str = ""
     #: 短信签名（控制台已审核通过的签名，须与模板归属一致）

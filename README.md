@@ -83,7 +83,7 @@
 
 - Implement create activity, enroll/cancel, and activity detail APIs.
 - Add verification and report/block modules.
-- SMS 验证码：生产环境配置阿里云 **SendSms**（见 `.env.example` 中 `ALIYUN_*`；[OpenAPI 文档](https://next.api.aliyun.com/api/Dysmsapi/2017-05-25/SendSms)）；JWT refresh token 流程已接入。
+- SMS 验证码：生产环境 `SMS_USE_MOCK=false`，通过 **`SMS_PROVIDER`** 选择 **`ihuyi`**（互亿无线，默认）或 **`aliyun`**（阿里云 SendSms）；变量见 `.env.example`。
 
 ## Ops Scripts
 

@@ -15,6 +15,7 @@ from app.db.session import get_db_session, redis_client
 from app.services.auth_blacklist import blacklist_access_jti
 from app.services.auth_refresh import issue_refresh_token, rotate_refresh_token, revoke_all_refresh_for_user
 from app.services.aliyun_sms import AliyunSmsError, send_sms_aliyun_sync
+from app.services.ihuyi_sms import IhuiSmsError, send_sms_submit_sync
 from app.services.ip_rate_limit import enforce_auth_ip_rate_limit
 from app.services.phone_validation import parse_cn_mobile
 from app.models.user import User
@@ -95,42 +96,72 @@ async def send_sms_code(payload: SendSMSCodeRequest) -> APIResponse[SendSMSCodeD
     await redis_client.set(redis_key, code, ex=ttl)
 
     if not settings.sms_use_mock:
-        ak = (settings.aliyun_access_key_id or "").strip()
-        sk = (settings.aliyun_access_key_secret or "").strip()
-        sign = (settings.aliyun_sms_sign_name or "").strip()
-        tpl = (settings.aliyun_sms_template_code or "").strip()
-        if ak and sk and sign and tpl:
-            endpoint = (settings.aliyun_sms_endpoint or "dysmsapi.aliyuncs.com").strip()
-            region = (settings.aliyun_sms_region_id or "cn-hangzhou").strip()
-            try:
-                template_param: dict = {"code": code}
-                if settings.aliyun_sms_template_include_minute:
-                    template_param["minute"] = str(max(1, ttl // 60))
-                await asyncio.to_thread(
-                    send_sms_aliyun_sync,
-                    ak,
-                    sk,
-                    endpoint=endpoint,
-                    region_id=region,
-                    phone_numbers=phone,
-                    sign_name=sign,
-                    template_code=tpl,
-                    template_param=template_param,
-                )
-            except AliyunSmsError as exc:
+        provider = settings.sms_provider
+        if provider == "aliyun":
+            ak = (settings.aliyun_access_key_id or "").strip()
+            sk = (settings.aliyun_access_key_secret or "").strip()
+            sign = (settings.aliyun_sms_sign_name or "").strip()
+            tpl = (settings.aliyun_sms_template_code or "").strip()
+            if ak and sk and sign and tpl:
+                endpoint = (settings.aliyun_sms_endpoint or "dysmsapi.aliyuncs.com").strip()
+                region = (settings.aliyun_sms_region_id or "cn-hangzhou").strip()
+                try:
+                    template_param: dict = {"code": code}
+                    if settings.aliyun_sms_template_include_minute:
+                        template_param["minute"] = str(max(1, ttl // 60))
+                    await asyncio.to_thread(
+                        send_sms_aliyun_sync,
+                        ak,
+                        sk,
+                        endpoint=endpoint,
+                        region_id=region,
+                        phone_numbers=phone,
+                        sign_name=sign,
+                        template_code=tpl,
+                        template_param=template_param,
+                    )
+                except AliyunSmsError as exc:
+                    await redis_client.delete(redis_key)
+                    await redis_client.delete(rate_key)
+                    raise HTTPException(status_code=502, detail=str(exc)) from exc
+            else:
                 await redis_client.delete(redis_key)
                 await redis_client.delete(rate_key)
-                raise HTTPException(status_code=502, detail=str(exc)) from exc
+                raise HTTPException(
+                    status_code=503,
+                    detail=(
+                        "Aliyun SMS not configured: set SMS_PROVIDER=aliyun requires "
+                        "ALIYUN_ACCESS_KEY_ID, ALIYUN_ACCESS_KEY_SECRET, "
+                        "ALIYUN_SMS_SIGN_NAME, ALIYUN_SMS_TEMPLATE_CODE"
+                    ),
+                )
         else:
-            await redis_client.delete(redis_key)
-            await redis_client.delete(rate_key)
-            raise HTTPException(
-                status_code=503,
-                detail=(
-                    "SMS service not configured: set ALIYUN_ACCESS_KEY_ID, "
-                    "ALIYUN_ACCESS_KEY_SECRET, ALIYUN_SMS_SIGN_NAME, ALIYUN_SMS_TEMPLATE_CODE"
-                ),
-            )
+            account = (settings.ihuyi_account or "").strip()
+            password = (settings.ihuyi_password or "").strip()
+            if account and password:
+                content = (settings.ihuyi_sms_template or "").replace("{code}", code)
+                try:
+                    await asyncio.to_thread(
+                        send_sms_submit_sync,
+                        account,
+                        password,
+                        phone,
+                        content,
+                    )
+                except IhuiSmsError as exc:
+                    await redis_client.delete(redis_key)
+                    await redis_client.delete(rate_key)
+                    raise HTTPException(status_code=502, detail=str(exc)) from exc
+            else:
+                await redis_client.delete(redis_key)
+                await redis_client.delete(rate_key)
+                raise HTTPException(
+                    status_code=503,
+                    detail=(
+                        "互亿无线短信未配置：请使用 SMS_PROVIDER=ihuyi（默认）并设置 "
+                        "IHUYI_ACCOUNT、IHUYI_PASSWORD；或改用 SMS_PROVIDER=aliyun 并配置 ALIYUN_*"
+                    ),
+                )
 
     return APIResponse(data=SendSMSCodeData(expireInSeconds=ttl))
 
