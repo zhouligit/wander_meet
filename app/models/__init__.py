@@ -6,6 +6,7 @@ from app.models.dm_request import DmRequest
 from app.models.dm_thread import DmThread
 from app.models.dm_thread_read import DmThreadRead
 from app.models.notification import Notification
+from app.models.place_activity_alert import PlaceActivityAlert
 from app.models.report import Report
 from app.models.user import User
 from app.models.user_chat_read import UserChatRead
@@ -26,5 +27,6 @@ __all__ = [
     "UserBlock",
     "UserChatRead",
     "Notification",
+    "PlaceActivityAlert",
 ]
 

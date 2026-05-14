@@ -14,6 +14,7 @@ from app.models import (  # noqa: F401
     dm_thread,
     dm_thread_read,
     notification,
+    place_activity_alert,
     report,
     user,
     user_chat_read,

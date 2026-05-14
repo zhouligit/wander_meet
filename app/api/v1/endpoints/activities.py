@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_current_user, get_optional_user
 from app.services.user_profile_fields import bio_from_user, tags_from_user
 from app.services.activity_query import (
+    city_codes_for_place_filter,
     date_range_start_filters,
     effective_activity_status,
     not_ended_condition,
@@ -80,8 +81,12 @@ async def list_activities(
         request.state.user_id = optional_user.id
 
     now_utc = datetime.now(UTC)
+    cc = (cityCode or "").strip()
+    if not cc or len(cc) > 16:
+        raise HTTPException(status_code=400, detail="invalid cityCode")
+    city_variants = city_codes_for_place_filter(cc)
     filters = [
-        Activity.city_code == cityCode,
+        Activity.city_code.in_(city_variants),
         Activity.activity_kind == EVENT_ACTIVITY_KIND,
         Activity.activity_status == "published",
         not_ended_condition(now_utc),

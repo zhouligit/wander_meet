@@ -52,6 +52,16 @@ def date_range_start_filters(date_range: str) -> list[ColumnElement[bool]]:
     return [Activity.start_at >= start_utc, Activity.start_at < end_utc]
 
 
+def city_codes_for_place_filter(city_code: str) -> list[str]:
+    """活动 ``city_code`` 可能与用户选的区县/地级市码不一致，扩展为候选集合再 ``IN`` 查询。"""
+    s = (city_code or "").strip()
+    if not s:
+        return []
+    if len(s) == 6 and s.isdigit():
+        return list({s, s[:4] + "00", s[:2] + "0000"})
+    return [s]
+
+
 def effective_activity_status(activity, now_utc: datetime) -> str:
     """Compare using UTC-aware datetimes (MySQL/asyncmy may return naive from ORM)."""
     if activity.activity_status != "published":

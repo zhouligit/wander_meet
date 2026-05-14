@@ -10,6 +10,7 @@ from app.services.city_hall import EVENT_ACTIVITY_KIND, is_city_hall_activity
 from app.models.activity import Activity
 from app.models.activity_enrollment import ActivityEnrollment
 from app.models.activity_message import ActivityMessage
+from app.models.place_activity_alert import PlaceActivityAlert
 from app.models.user import User
 from app.models.user_chat_read import UserChatRead
 from app.schemas.common import APIResponse
@@ -24,6 +25,12 @@ from app.schemas.me import (
     PremiumData,
     UpdateMeRequest,
     VerificationSummary,
+)
+from app.schemas.place_activity import (
+    CreatePlaceActivityAlertRequest,
+    PlaceActivityAlertCreateData,
+    PlaceActivityAlertItem,
+    PlaceActivityAlertListData,
 )
 from app.services.user_profile_fields import bio_from_user, tags_from_user
 
@@ -459,4 +466,123 @@ async def avatar_upload_url(
             "headers": {"Content-Type": contentType},
         }
     )
+
+
+@router.get("/place-activity-alerts")
+async def list_my_place_activity_alerts(
+    db: AsyncSession = Depends(get_db_session),
+    current_user: User = Depends(get_current_user),
+) -> APIResponse[PlaceActivityAlertListData]:
+    rows = (
+        (
+            await db.execute(
+                select(PlaceActivityAlert)
+                .where(
+                    PlaceActivityAlert.user_id == current_user.id,
+                    PlaceActivityAlert.status == "active",
+                )
+                .order_by(PlaceActivityAlert.created_at.desc())
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return APIResponse(
+        data=PlaceActivityAlertListData(
+            list=[
+                PlaceActivityAlertItem(
+                    alertId=f"pal_{r.id}",
+                    cityCode=r.city_code,
+                    placeLabel=r.place_label,
+                    categoryId=r.category_id or "",
+                    dateRange=r.date_range,
+                    status=r.status,
+                    createdAt=r.created_at,
+                )
+                for r in rows
+            ],
+        )
+    )
+
+
+@router.post("/place-activity-alerts")
+async def create_place_activity_alert(
+    payload: CreatePlaceActivityAlertRequest,
+    db: AsyncSession = Depends(get_db_session),
+    current_user: User = Depends(get_current_user),
+) -> APIResponse[PlaceActivityAlertCreateData]:
+    cc = (payload.cityCode or "").strip()
+    if not cc or len(cc) > 16:
+        raise HTTPException(status_code=400, detail="invalid cityCode")
+    lbl = (payload.placeLabel or "").strip()[:128]
+    cat = ((payload.categoryId or "").strip()[:32]) if payload.categoryId else ""
+    dr = payload.dateRange or "all"
+
+    existing = await db.scalar(
+        select(PlaceActivityAlert).where(
+            PlaceActivityAlert.user_id == current_user.id,
+            PlaceActivityAlert.city_code == cc,
+            PlaceActivityAlert.category_id == cat,
+            PlaceActivityAlert.date_range == dr,
+            PlaceActivityAlert.status == "active",
+        )
+    )
+    if existing:
+        return APIResponse(
+            data=PlaceActivityAlertCreateData(
+                alertId=f"pal_{existing.id}",
+                cityCode=existing.city_code,
+                placeLabel=existing.place_label,
+                categoryId=existing.category_id or "",
+                dateRange=existing.date_range,
+                createdAt=existing.created_at,
+            )
+        )
+
+    row = PlaceActivityAlert(
+        user_id=current_user.id,
+        city_code=cc,
+        place_label=lbl or cc,
+        category_id=cat,
+        date_range=dr,
+        status="active",
+    )
+    db.add(row)
+    await db.commit()
+    await db.refresh(row)
+    return APIResponse(
+        data=PlaceActivityAlertCreateData(
+            alertId=f"pal_{row.id}",
+            cityCode=row.city_code,
+            placeLabel=row.place_label,
+            categoryId=row.category_id or "",
+            dateRange=row.date_range,
+            createdAt=row.created_at,
+        )
+    )
+
+
+@router.delete("/place-activity-alerts/{alert_id}")
+async def delete_place_activity_alert(
+    alert_id: str,
+    db: AsyncSession = Depends(get_db_session),
+    current_user: User = Depends(get_current_user),
+) -> APIResponse[dict]:
+    raw = alert_id.strip()
+    if raw.startswith("pal_"):
+        raw = raw[4:]
+    if not raw.isdigit():
+        raise HTTPException(status_code=400, detail="invalid alert id")
+    pk = int(raw)
+    row = await db.scalar(
+        select(PlaceActivityAlert).where(
+            PlaceActivityAlert.id == pk,
+            PlaceActivityAlert.user_id == current_user.id,
+        )
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="not found")
+    await db.delete(row)
+    await db.commit()
+    return APIResponse(data={"deleted": True})
 

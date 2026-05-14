@@ -1,7 +1,8 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Query
 
 from app.schemas.common import APIResponse
 from app.schemas.city_group import CityGroupsMetaData
+from app.schemas.place_activity import PlaceSuggestionItem, PlaceSuggestionsData
 from app.schemas.meta import (
     CategoryData,
     CategoryItem,
@@ -12,6 +13,7 @@ from app.schemas.meta import (
     StayKindMeta,
     TravelerRoleMeta,
 )
+from app.services.place_suggestions import search_place_suggestions
 
 router = APIRouter(prefix="/meta", tags=["meta"])
 
@@ -115,4 +117,17 @@ async def onboarding_meta() -> APIResponse[OnboardingMetaData]:
         ],
     )
     return APIResponse(data=data)
+
+
+@router.get("/place-suggestions")
+async def place_suggestions(
+    q: str = Query("", max_length=32),
+) -> APIResponse[PlaceSuggestionsData]:
+    """按关键字匹配城市/区县名或编码（与活动 ``city_code`` 体系一致）。"""
+    rows = search_place_suggestions(q, limit=30)
+    return APIResponse(
+        data=PlaceSuggestionsData(
+            list=[PlaceSuggestionItem(**r) for r in rows],
+        )
+    )
 
