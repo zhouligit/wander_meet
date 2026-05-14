@@ -12,6 +12,7 @@ from app.models.user import User
 from app.models.user_chat_read import UserChatRead
 from app.models.user_block import UserBlock
 from app.models.user_verification import UserVerification
+from app.models.user_feedback import UserFeedback
 
 __all__ = [
     "User",
@@ -28,5 +29,6 @@ __all__ = [
     "UserChatRead",
     "Notification",
     "PlaceActivityAlert",
+    "UserFeedback",
 ]
 

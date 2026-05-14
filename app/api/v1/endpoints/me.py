@@ -12,6 +12,7 @@ from app.models.activity_enrollment import ActivityEnrollment
 from app.models.activity_message import ActivityMessage
 from app.models.place_activity_alert import PlaceActivityAlert
 from app.models.user import User
+from app.models.user_feedback import UserFeedback
 from app.models.user_chat_read import UserChatRead
 from app.schemas.common import APIResponse
 from app.schemas.datetime_iso import datetime_to_rfc3339_utc_z
@@ -26,6 +27,7 @@ from app.schemas.me import (
     UpdateMeRequest,
     VerificationSummary,
 )
+from app.schemas.feedback import CreateUserFeedbackRequest, UserFeedbackCreateData
 from app.schemas.place_activity import (
     CreatePlaceActivityAlertRequest,
     PlaceActivityAlertCreateData,
@@ -585,4 +587,34 @@ async def delete_place_activity_alert(
     await db.delete(row)
     await db.commit()
     return APIResponse(data={"deleted": True})
+
+
+@router.post("/feedback")
+async def create_user_feedback(
+    payload: CreateUserFeedbackRequest,
+    db: AsyncSession = Depends(get_db_session),
+    current_user: User = Depends(get_current_user),
+) -> APIResponse[UserFeedbackCreateData]:
+    """提交意见与建议（需登录；用于运营回访与排期）。"""
+    if current_user.status != "active":
+        raise HTTPException(status_code=403, detail="User is restricted")
+    plat = (payload.platform or "mp-weixin").strip()[:16] or "mp-weixin"
+    app_ver = (payload.appVersion or "").strip()[:32]
+    exp = (payload.expectation or "").strip()[:500]
+    note = (payload.contactNote or "").strip()[:160]
+    row = UserFeedback(
+        user_id=current_user.id,
+        scene=payload.scene,
+        description=payload.description.strip(),
+        expectation=exp,
+        contact_willing=bool(payload.contactWilling),
+        contact_note=note,
+        platform=plat,
+        app_version=app_ver,
+        status="new",
+    )
+    db.add(row)
+    await db.commit()
+    await db.refresh(row)
+    return APIResponse(data=UserFeedbackCreateData(feedbackId=f"fb_{row.id}"))
 

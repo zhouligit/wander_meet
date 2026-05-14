@@ -16,6 +16,7 @@ from app.models import (  # noqa: F401
     notification,
     place_activity_alert,
     report,
+    user_feedback,
     user,
     user_chat_read,
     user_block,
