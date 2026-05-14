@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-"""从 modood/Administrative-divisions-of-China 的 cities.json 生成 ``city_hall_prefectures.json``。
+"""生成 ``app/data/city_hall_prefectures.json``。
 
-用法（需联网）::
+- 普通省：地级市（``cities.json``，建议经 jsDelivr 拉取 modood 数据）。
+- 直辖市：区县列表来自仓库内 ``app/data/city_hall_municipality_districts.json``（由 PCA 抽取，可单独更新）。
+
+用法::
 
   python3 scripts/gen_city_hall_prefectures.py
-
-输出：``app/data/city_hall_prefectures.json``
 """
 
 from __future__ import annotations
@@ -15,20 +16,24 @@ import urllib.request
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-RAW_URL = (
-    "https://raw.githubusercontent.com/modood/Administrative-divisions-of-China/master/dist/cities.json"
+CITIES_URL = (
+    "https://cdn.jsdelivr.net/gh/modood/Administrative-divisions-of-China@master/dist/cities.json"
 )
-OUT = ROOT / "app/data" / "city_hall_prefectures.json"
+MUNI_PATH = ROOT / "app/data/city_hall_municipality_districts.json"
+OUT = ROOT / "app/data/city_hall_prefectures.json"
+
+MUNI_2 = {"11", "12", "31", "50"}
+
+
+def prov2_to_six(pc: str) -> str:
+    return f"{pc.zfill(2)}0000"
 
 
 def main() -> None:
-    with urllib.request.urlopen(RAW_URL, timeout=120) as r:
+    with urllib.request.urlopen(CITIES_URL, timeout=120) as r:
         rows: list[dict] = json.loads(r.read().decode("utf-8"))
+    muni: dict[str, list[dict]] = json.loads(MUNI_PATH.read_text(encoding="utf-8"))
 
-    def prov2_to_six(pc: str) -> str:
-        return f"{pc.zfill(2)}0000"
-
-    MUNI = {"11", "12", "31", "50"}
     by_p: dict[str, list[dict]] = {}
     for row in rows:
         by_p.setdefault(row["provinceCode"], []).append(row)
@@ -36,44 +41,30 @@ def main() -> None:
     blocks: list[dict] = []
     for pc2 in sorted(by_p.keys(), key=lambda x: int(x)):
         pr_six = prov2_to_six(pc2)
-        cities_out: list[dict] = []
-        seen: set[str] = set()
-        group = sorted(by_p[pc2], key=lambda x: x["code"])
-        if pc2 in MUNI and len(group) == 1 and group[0]["name"] == "市辖区":
-            name_map = {
-                "110000": "北京市",
-                "120000": "天津市",
-                "310000": "上海市",
-                "500000": "重庆市",
-            }
-            cities_out.append({"cityCode": pr_six, "cityName": name_map[pr_six]})
-            seen.add(pr_six)
+        if pc2 in MUNI_2:
+            cities_out = list(muni.get(pc2) or [])
+            if not cities_out:
+                name_map = {
+                    "110000": "北京市",
+                    "120000": "天津市",
+                    "310000": "上海市",
+                    "500000": "重庆市",
+                }
+                cities_out = [{"cityCode": pr_six, "cityName": name_map[pr_six]}]
         else:
-            for r in group:
-                nm = r["name"]
-                ccode = r["code"]
-                if nm == "省直辖县级行政区划":
+            cities_out = []
+            seen: set[str] = set()
+            for row in sorted(by_p[pc2], key=lambda x: x["code"]):
+                nm, ccode = row["name"], row["code"]
+                if nm in ("省直辖县级行政区划", "市辖区"):
                     continue
-                if nm == "市辖区" and pc2 in MUNI:
-                    cc = pr_six
-                    name_map = {
-                        "110000": "北京市",
-                        "120000": "天津市",
-                        "310000": "上海市",
-                        "500000": "重庆市",
-                    }
-                    nm = name_map[cc]
-                elif nm == "市辖区":
-                    continue
-                else:
-                    cc = f"{ccode}00" if len(ccode) == 4 else ccode
-                if len(cc) != 6 or not cc.isdigit():
-                    continue
-                if cc in seen:
+                cc = f"{ccode}00" if len(ccode) == 4 else ccode
+                if len(cc) != 6 or not cc.isdigit() or cc in seen:
                     continue
                 seen.add(cc)
                 cities_out.append({"cityCode": cc, "cityName": nm})
-        cities_out.sort(key=lambda x: x["cityCode"])
+            cities_out.sort(key=lambda x: x["cityCode"])
+
         blocks.append({"provinceCode": pr_six, "cities": cities_out})
 
     extra = [
@@ -90,8 +81,8 @@ def main() -> None:
     blocks.sort(key=lambda b: b["provinceCode"])
     OUT.parent.mkdir(parents=True, exist_ok=True)
     OUT.write_text(json.dumps(blocks, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
-    n_city = sum(len(b["cities"]) for b in blocks)
-    print(f"wrote {OUT} provinces={len(blocks)} cities={n_city}")
+    n_leaf = sum(len(b["cities"]) for b in blocks)
+    print(f"wrote {OUT} provinces={len(blocks)} leaf-locations={n_leaf}")
 
 
 if __name__ == "__main__":
