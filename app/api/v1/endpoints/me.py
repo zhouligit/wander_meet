@@ -25,6 +25,7 @@ from app.schemas.me import (
     UpdateMeRequest,
     VerificationSummary,
 )
+from app.services.user_profile_fields import bio_from_user, tags_from_user
 
 router = APIRouter(prefix="/me", tags=["me"])
 
