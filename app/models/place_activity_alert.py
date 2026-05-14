@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, String, func
+from sqlalchemy import BigInteger, DateTime, ForeignKey, String, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -11,8 +11,10 @@ class PlaceActivityAlert(Base):
 
     __tablename__ = "place_activity_alerts"
 
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    id: Mapped[int] = mapped_column(BigInteger(), primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(
+        BigInteger(), ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
     city_code: Mapped[str] = mapped_column(String(16), index=True)
     place_label: Mapped[str] = mapped_column(String(128))
     category_id: Mapped[str] = mapped_column(String(32), default="", server_default="")

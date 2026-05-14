@@ -17,10 +17,11 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
+    # users.id is BIGINT (see 20260416_0001); FK columns must match exactly for MySQL 8.
     op.create_table(
         "place_activity_alerts",
-        sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
-        sa.Column("user_id", sa.Integer(), nullable=False),
+        sa.Column("id", sa.BigInteger(), autoincrement=True, nullable=False),
+        sa.Column("user_id", sa.BigInteger(), nullable=False),
         sa.Column("city_code", sa.String(length=16), nullable=False),
         sa.Column("place_label", sa.String(length=128), nullable=False),
         sa.Column("category_id", sa.String(length=32), nullable=False, server_default=""),
