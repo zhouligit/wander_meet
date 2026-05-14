@@ -6,7 +6,6 @@
 from __future__ import annotations
 
 import logging
-from collections import defaultdict
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import func, select
@@ -27,14 +26,14 @@ from app.schemas.city_group import (
 )
 from app.schemas.common import APIResponse
 from app.services.activity_enroll import enroll_user_in_activity
-from app.services.china_province_meta import infer_province_code, province_display_name
+from app.services.china_province_meta import province_display_name
 from app.services.city_hall import (
     CITY_HALL_ACTIVITY_KIND,
-    city_hall_short_label,
     get_or_create_city_hall_activity,
     is_city_hall_activity,
     normalize_city_code,
 )
+from app.services.city_hall_region_catalog import load_static_prefecture_blocks
 
 router = APIRouter(prefix="/city-groups", tags=["city-groups"])
 logger = logging.getLogger(__name__)
@@ -58,86 +57,85 @@ async def city_hall_catalog(
     db: AsyncSession = Depends(get_db_session),
     optional_user: User | None = Depends(get_optional_user),
 ) -> APIResponse[CityHallCatalogData]:
-    """已创建的城市大群目录：按省分组，省内按 ``city_hall_sort_key``、城市码排序。"""
+    """全国地级市目录（静态 JSON）与已开通大群合并：按省分组，每市展示人数或「未开通」。"""
     if optional_user:
         request.state.user_id = optional_user.id
 
+    static_blocks = load_static_prefecture_blocks()
+
     rows = (
-        (
-            await db.execute(
-                select(Activity)
-                .where(Activity.activity_kind == CITY_HALL_ACTIVITY_KIND)
-                .order_by(
-                    Activity.city_hall_province_code.asc(),
-                    Activity.city_hall_sort_key.asc(),
-                    Activity.city_hall_city_code.asc(),
-                )
-            )
-        )
+        (await db.execute(select(Activity).where(Activity.activity_kind == CITY_HALL_ACTIVITY_KIND)))
         .scalars()
         .all()
     )
-    if not rows:
-        return APIResponse(data=CityHallCatalogData(provinces=[]))
+    act_by_code: dict[str, Activity] = {}
+    for a in rows:
+        key = (a.city_hall_city_code or a.city_code or "").strip()
+        if key:
+            act_by_code[key] = a
 
     ids = [a.id for a in rows]
-    cnt_rows = await db.execute(
-        select(ActivityEnrollment.activity_id, func.count(ActivityEnrollment.id))
-        .where(
-            ActivityEnrollment.activity_id.in_(ids),
-            ActivityEnrollment.status == "joined",
-        )
-        .group_by(ActivityEnrollment.activity_id)
-    )
-    count_map = {int(aid): int(c) for aid, c in cnt_rows.all()}
-
+    count_map: dict[int, int] = {}
     joined_ids: set[int] = set()
-    if optional_user:
-        jr = await db.execute(
-            select(ActivityEnrollment.activity_id).where(
-                ActivityEnrollment.user_id == optional_user.id,
+    if ids:
+        cnt_rows = await db.execute(
+            select(ActivityEnrollment.activity_id, func.count(ActivityEnrollment.id))
+            .where(
                 ActivityEnrollment.activity_id.in_(ids),
                 ActivityEnrollment.status == "joined",
             )
+            .group_by(ActivityEnrollment.activity_id)
         )
-        joined_ids = {int(r[0]) for r in jr.all()}
+        count_map = {int(aid): int(c) for aid, c in cnt_rows.all()}
 
-    buckets: dict[str, list[Activity]] = defaultdict(list)
-    for a in rows:
-        prov = (a.city_hall_province_code or "").strip() or infer_province_code(
-            a.city_hall_city_code or ""
-        )
-        buckets[prov].append(a)
-
-    province_order = sorted(buckets.keys())
-    provinces: list[CityHallCatalogProvince] = []
-    for code in province_order:
-        cities_act = sorted(
-            buckets[code],
-            key=lambda x: (
-                (x.city_hall_sort_key or "").lower(),
-                (x.city_hall_city_code or "").lower(),
-            ),
-        )
-        cities: list[CityHallCatalogCity] = []
-        for a in cities_act:
-            cnt = count_map.get(a.id, 0)
-            j = optional_user is not None and a.id in joined_ids
-            cities.append(
-                CityHallCatalogCity(
-                    cityCode=a.city_hall_city_code or a.city_code,
-                    cityName=city_hall_short_label(a.title),
-                    displayName=a.title,
-                    memberCount=cnt,
-                    activityId=f"act_{a.id}",
-                    joined=j if optional_user else None,
+        if optional_user:
+            jr = await db.execute(
+                select(ActivityEnrollment.activity_id).where(
+                    ActivityEnrollment.user_id == optional_user.id,
+                    ActivityEnrollment.activity_id.in_(ids),
+                    ActivityEnrollment.status == "joined",
                 )
             )
+            joined_ids = {int(r[0]) for r in jr.all()}
+
+    provinces: list[CityHallCatalogProvince] = []
+    for blk in static_blocks:
+        pr_code = blk["provinceCode"]
+        pr_name = province_display_name(pr_code)
+        cities_out: list[CityHallCatalogCity] = []
+        for c in blk["cities"]:
+            cc = c["cityCode"]
+            nm = c["cityName"]
+            act = act_by_code.get(cc)
+            if act:
+                cnt = count_map.get(act.id, 0)
+                j = optional_user is not None and act.id in joined_ids
+                cities_out.append(
+                    CityHallCatalogCity(
+                        cityCode=cc,
+                        cityName=nm,
+                        displayName=act.title,
+                        memberCount=cnt,
+                        activityId=f"act_{act.id}",
+                        joined=j if optional_user else None,
+                    )
+                )
+            else:
+                cities_out.append(
+                    CityHallCatalogCity(
+                        cityCode=cc,
+                        cityName=nm,
+                        displayName=f"{nm} · 城市大群",
+                        memberCount=0,
+                        activityId=None,
+                        joined=None,
+                    )
+                )
         provinces.append(
             CityHallCatalogProvince(
-                provinceCode=code,
-                provinceName=province_display_name(code),
-                cities=cities,
+                provinceCode=pr_code,
+                provinceName=pr_name,
+                cities=cities_out,
             )
         )
 

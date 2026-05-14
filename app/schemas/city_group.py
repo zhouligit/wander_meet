@@ -36,7 +36,8 @@ class CityHallCatalogCity(BaseModel):
     cityName: str
     displayName: str
     memberCount: int
-    activityId: str
+    #: 尚无用户触发创建时为 ``None``
+    activityId: str | None = None
     joined: bool | None = None
 
 
