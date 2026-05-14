@@ -21,7 +21,7 @@ async def city_groups_meta() -> APIResponse[CityGroupsMetaData]:
     """城市大群前端文案与开关（无需登录）。"""
     return APIResponse(
         data=CityGroupsMetaData(
-            recommendTip="加入同城城市大群，问路、约饭、找搭子；消息与活动群聊使用同一套会话能力。",
+            recommendTip="城市大群由系统在首个用户加入时自动创建，群主为系统管理员；目录按省份分组，省内按展示名/城市编码排序。加入后使用与活动相同的群聊能力。",
             userCanCreate=False,
         )
     )

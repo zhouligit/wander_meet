@@ -3,6 +3,8 @@ from pydantic import BaseModel, Field
 
 class CityHallJoinRequest(BaseModel):
     cityCode: str = Field(min_length=1, max_length=32)
+    #: 可选展示名（标题与省内排序）；不传则用 cityCode
+    cityLabel: str | None = Field(default=None, max_length=48)
 
 
 class CityHallLookupData(BaseModel):
@@ -27,3 +29,22 @@ class CityHallJoinData(BaseModel):
 class CityGroupsMetaData(BaseModel):
     recommendTip: str
     userCanCreate: bool
+
+
+class CityHallCatalogCity(BaseModel):
+    cityCode: str
+    cityName: str
+    displayName: str
+    memberCount: int
+    activityId: str
+    joined: bool | None = None
+
+
+class CityHallCatalogProvince(BaseModel):
+    provinceCode: str
+    provinceName: str
+    cities: list[CityHallCatalogCity]
+
+
+class CityHallCatalogData(BaseModel):
+    provinces: list[CityHallCatalogProvince]

@@ -1,4 +1,9 @@
-"""城市大群：以 ``activity_kind=city_hall`` 的虚拟活动承载，复用报名与活动消息。"""
+"""城市大群：以 ``activity_kind=city_hall`` 的虚拟活动承载，复用报名与活动消息。
+
+- **系统管理员**：内置系统用户作为 ``organizer_id``（昵称「系统管理员」），不在群内占报名名额。
+- **懒创建**：仅 ``get_or_create_city_hall_activity`` 会写库；``lookup`` 只读。首个用户通过 ``join``（或业务上先 ``get_or_create``）在无记录时创建群。
+- **省内排序**：``city_hall_sort_key`` 默认使用 ``city_code`` 小写，便于与行政区划/车牌地区编号顺序一致。
+"""
 
 from __future__ import annotations
 
@@ -13,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.security import hash_phone
 from app.models.activity import Activity
 from app.models.user import User
+from app.services.china_province_meta import infer_province_code
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +41,22 @@ def is_city_hall_activity(activity: Activity) -> bool:
     return activity.activity_kind == CITY_HALL_ACTIVITY_KIND
 
 
+def city_hall_short_label(title: str) -> str:
+    suf = " · 城市大群"
+    if title.endswith(suf):
+        return (title[: -len(suf)] or title).strip()
+    return (title or "").strip() or title
+
+
+def _city_hall_sort_key(city_code: str, city_label: str | None) -> str:
+    """省内排序：优先展示名小写（便于首字母拉丁字），否则城市码小写（区划/车牌地区号序）。"""
+    label = (city_label or "").strip()
+    if label:
+        base = label.lower()[:48]
+        return f"{base}\t{city_code.lower()}"[:64]
+    return city_code.lower()[:64]
+
+
 async def ensure_city_hall_system_user(db: AsyncSession) -> int:
     ph = hash_phone(SYSTEM_USER_PHONE_SEED)
     u = await db.scalar(select(User).where(User.phone_hash == ph))
@@ -43,7 +65,7 @@ async def ensure_city_hall_system_user(db: AsyncSession) -> int:
     u = User(
         phone=None,
         phone_hash=ph,
-        nickname="城市大群",
+        nickname="系统管理员",
         status="active",
         role="user",
     )
@@ -63,8 +85,10 @@ async def get_or_create_city_hall_activity(
     db: AsyncSession,
     city_code: str,
     *,
+    city_label: str | None = None,
     log_user_id: int | None = None,
 ) -> Activity:
+    """表内已有该 ``city_hall_city_code`` 则直接返回；否则由系统账号创建（首个触发 ``join`` 的用户触发创建）。"""
     cc = normalize_city_code(city_code)
     existing = await db.scalar(
         select(Activity).where(
@@ -76,7 +100,10 @@ async def get_or_create_city_hall_activity(
         return existing
 
     system_uid = await ensure_city_hall_system_user(db)
-    title = f"{cc} · 城市大群"
+    display = (city_label or "").strip() or cc
+    title = f"{display[:40]} · 城市大群"
+    prov = infer_province_code(cc)
+    sort_key = _city_hall_sort_key(cc, city_label)
     activity = Activity(
         organizer_id=system_uid,
         title=title[:80],
@@ -84,6 +111,8 @@ async def get_or_create_city_hall_activity(
         category_id=CITY_HALL_CATEGORY_ID,
         city_code=cc,
         city_hall_city_code=cc,
+        city_hall_province_code=prov,
+        city_hall_sort_key=sort_key,
         activity_kind=CITY_HALL_ACTIVITY_KIND,
         location_name="全城",
         address_detail=None,
