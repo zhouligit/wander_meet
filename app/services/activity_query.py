@@ -52,13 +52,22 @@ def date_range_start_filters(date_range: str) -> list[ColumnElement[bool]]:
     return [Activity.start_at >= start_utc, Activity.start_at < end_utc]
 
 
+# 直辖市国标前两位：若用户选的是区县（如 110101），不应再并入 xx0000，否则 IN 到 110000 会扫进「整市」活动。
+_MUNICIPALITY_PROVINCE_PREFIXES = frozenset({"11", "12", "31", "50"})
+
+
 def city_codes_for_place_filter(city_code: str) -> list[str]:
     """活动 ``city_code`` 可能与用户选的区县/地级市码不一致，扩展为候选集合再 ``IN`` 查询。"""
     s = (city_code or "").strip()
     if not s:
         return []
     if len(s) == 6 and s.isdigit():
-        return list({s, s[:4] + "00", s[:2] + "0000"})
+        variants: set[str] = {s, s[:4] + "00"}
+        prov = s[:2] + "0000"
+        skip_prov_bucket = s[:2] in _MUNICIPALITY_PROVINCE_PREFIXES and s != prov
+        if not skip_prov_bucket:
+            variants.add(prov)
+        return list(variants)
     return [s]
 
 
