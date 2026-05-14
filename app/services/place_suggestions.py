@@ -2,13 +2,20 @@
 
 from __future__ import annotations
 
+import unicodedata
+
 from app.services.china_province_meta import province_display_name
 from app.services.city_hall_region_catalog import load_static_prefecture_blocks
 
 
+def _normalize_place_query(raw: str) -> str:
+    s = unicodedata.normalize("NFKC", (raw or "").strip()).lower()
+    return s.replace("\u3000", " ").strip()
+
+
 def _place_search_needles(query: str) -> list[str]:
     """支持「枣庄市中区」等：在含「市/州/盟/地区」时增加截到该后缀的别名，便于命中目录里的「枣庄市」。"""
-    q = (query or "").strip().lower()
+    q = _normalize_place_query(query)
     if not q or len(q) > 32:
         return []
     needles = [q]
@@ -27,7 +34,7 @@ def _place_search_needles(query: str) -> list[str]:
 
 
 def search_place_suggestions(query: str, *, limit: int = 30) -> list[dict]:
-    q = (query or "").strip().lower()
+    q = _normalize_place_query(query)
     if not q or len(q) > 32:
         return []
     needles = _place_search_needles(q)
