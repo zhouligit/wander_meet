@@ -78,6 +78,8 @@ class MyEnrollment(BaseModel):
 
 class ActivityDetailData(BaseModel):
     activityId: str
+    #: ``event`` 普通活动；``city_hall`` 城市大群（前向兼容：缺省视为 event）
+    activityKind: str = "event"
     title: str
     description: str
     categoryId: str

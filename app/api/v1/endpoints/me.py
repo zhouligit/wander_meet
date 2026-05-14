@@ -1,12 +1,12 @@
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import and_, func, select
+from sqlalchemy import and_, case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user
 from app.db.session import get_db_session
-from app.services.user_profile_fields import bio_from_user, tags_from_user
+from app.services.city_hall import EVENT_ACTIVITY_KIND, is_city_hall_activity
 from app.models.activity import Activity
 from app.models.activity_enrollment import ActivityEnrollment
 from app.models.activity_message import ActivityMessage
@@ -97,7 +97,10 @@ async def my_stats(
     current_user: User = Depends(get_current_user),
 ) -> APIResponse[MyStatsData]:
     organized = await db.scalar(
-        select(func.count(Activity.id)).where(Activity.organizer_id == current_user.id)
+        select(func.count(Activity.id)).where(
+            Activity.organizer_id == current_user.id,
+            Activity.activity_kind == EVENT_ACTIVITY_KIND,
+        )
     )
     joined = await db.scalar(
         select(func.count(Activity.id))
@@ -192,10 +195,16 @@ async def my_activities(
     current_user: User = Depends(get_current_user),
 ) -> APIResponse[MyActivitiesData]:
     if role == "organized":
-        base_stmt = select(Activity).where(Activity.organizer_id == current_user.id)
+        base_stmt = select(Activity).where(
+            Activity.organizer_id == current_user.id,
+            Activity.activity_kind == EVENT_ACTIVITY_KIND,
+        )
         total = (
             await db.execute(
-                select(func.count(Activity.id)).where(Activity.organizer_id == current_user.id)
+                select(func.count(Activity.id)).where(
+                    Activity.organizer_id == current_user.id,
+                    Activity.activity_kind == EVENT_ACTIVITY_KIND,
+                )
             )
         ).scalar_one()
         rows = (
@@ -228,7 +237,10 @@ async def my_activities(
                     select(Activity)
                     .join(ActivityEnrollment, ActivityEnrollment.activity_id == Activity.id)
                     .where(joined_filter)
-                    .order_by(Activity.start_at.desc())
+                    .order_by(
+                        case((Activity.activity_kind == "city_hall", 0), else_=1),
+                        Activity.start_at.desc(),
+                    )
                     .offset((page - 1) * pageSize)
                     .limit(pageSize)
                 )
@@ -241,6 +253,7 @@ async def my_activities(
         list=[
             MyActivitiesItem(
                 activityId=f"act_{a.id}",
+                activityKind=a.activity_kind,
                 title=a.title,
                 startAt=a.start_at,
                 locationName=a.location_name,
@@ -306,6 +319,7 @@ async def my_chats(
                 )
                 .outerjoin(last_msg_sq, last_msg_sq.c.aid == Activity.id)
                 .order_by(
+                    case((Activity.activity_kind == "city_hall", 0), else_=1),
                     func.coalesce(last_msg_sq.c.last_msg_at, EPOCH_UTC).desc(),
                     Activity.id.desc(),
                 )
@@ -376,15 +390,19 @@ async def my_chats(
             last_message = "[图片]"
             last_message_at = last_msg.created_at
 
+        unread_raw = int(unread_map.get(activity.id, 0))
+        if is_city_hall_activity(activity):
+            unread_raw = min(unread_raw, 99)
         chat_items.append(
             MyChatItem(
                 activityId=f"act_{activity.id}",
+                activityKind=activity.activity_kind,
                 title=activity.title,
                 activityStatus=activity.activity_status,
                 memberCount=int(member_count_map.get(activity.id, 0)),
                 lastMessage=last_message,
                 lastMessageAt=last_message_at,
-                unreadCount=int(unread_map.get(activity.id, 0)),
+                unreadCount=unread_raw,
             )
         )
 

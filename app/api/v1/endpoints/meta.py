@@ -1,6 +1,7 @@
 from fastapi import APIRouter
 
 from app.schemas.common import APIResponse
+from app.schemas.city_group import CityGroupsMetaData
 from app.schemas.meta import (
     CategoryData,
     CategoryItem,
@@ -13,6 +14,17 @@ from app.schemas.meta import (
 )
 
 router = APIRouter(prefix="/meta", tags=["meta"])
+
+
+@router.get("/city-groups")
+async def city_groups_meta() -> APIResponse[CityGroupsMetaData]:
+    """城市大群前端文案与开关（无需登录）。"""
+    return APIResponse(
+        data=CityGroupsMetaData(
+            recommendTip="加入同城城市大群，问路、约饭、找搭子；消息与活动群聊使用同一套会话能力。",
+            userCanCreate=False,
+        )
+    )
 
 
 @router.get("/activity-categories")

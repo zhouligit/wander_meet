@@ -10,6 +10,10 @@ class Activity(Base):
     __tablename__ = "activities"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    #: ``event`` 普通活动；``city_hall`` 城市大群（虚拟活动，复用报名与群聊表）
+    activity_kind: Mapped[str] = mapped_column(String(20), default="event", server_default="event")
+    #: 仅 ``city_hall`` 非空；唯一约束见迁移 ``uq_activities_city_hall_city_code``
+    city_hall_city_code: Mapped[str | None] = mapped_column(String(32), nullable=True)
     organizer_id: Mapped[int] = mapped_column(index=True)
     title: Mapped[str] = mapped_column(String(80), index=True)
     description: Mapped[str] = mapped_column(Text())

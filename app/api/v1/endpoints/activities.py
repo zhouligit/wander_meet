@@ -4,7 +4,6 @@ import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import Float, cast, func, select
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, get_optional_user
@@ -16,6 +15,8 @@ from app.services.activity_query import (
     to_utc,
     to_utc_optional,
 )
+from app.services.activity_enroll import enroll_user_in_activity
+from app.services.city_hall import EVENT_ACTIVITY_KIND, is_city_hall_activity
 from app.services.contact_content_filter import contact_text_blocked_reason
 from app.db.session import get_db_session
 from app.models.activity import Activity
@@ -81,6 +82,7 @@ async def list_activities(
     now_utc = datetime.now(UTC)
     filters = [
         Activity.city_code == cityCode,
+        Activity.activity_kind == EVENT_ACTIVITY_KIND,
         Activity.activity_status == "published",
         not_ended_condition(now_utc),
     ]
@@ -180,6 +182,7 @@ async def list_nearby_activities(
 
     distance_expr = _distance_meters_expr(lat=lat, lng=lng)
     base_filters = [
+        Activity.activity_kind == EVENT_ACTIVITY_KIND,
         Activity.activity_status == "published",
         not_ended_condition(now_utc),
         Activity.lat >= min_lat,
@@ -320,6 +323,7 @@ async def get_activity_detail(
 
     data = ActivityDetailData(
         activityId=f"act_{activity.id}",
+        activityKind=activity.activity_kind,
         title=activity.title,
         description=activity.description,
         categoryId=activity.category_id,
@@ -396,6 +400,7 @@ async def create_activity(
     now_create = datetime.now(UTC)
     data = ActivityDetailData(
         activityId=f"act_{activity.id}",
+        activityKind=activity.activity_kind,
         title=activity.title,
         description=activity.description,
         categoryId=activity.category_id,
@@ -436,48 +441,8 @@ async def enroll_activity(
     activity = await db.scalar(select(Activity).where(Activity.id == activity_pk))
     if not activity:
         raise HTTPException(status_code=404, detail="Activity not found")
-    now_enroll = datetime.now(UTC)
-    if activity.activity_status != "published":
-        raise HTTPException(status_code=400, detail="Activity is not open for enrollment")
-    if activity.end_at is not None and to_utc(activity.end_at) <= now_enroll:
-        raise HTTPException(status_code=400, detail="Activity has ended")
 
-    joined_count = await db.scalar(
-        select(func.count(ActivityEnrollment.id)).where(
-            ActivityEnrollment.activity_id == activity.id,
-            ActivityEnrollment.status == "joined",
-        )
-    )
-    if int(joined_count or 0) >= activity.max_members:
-        raise HTTPException(status_code=409, detail="Activity is full")
-
-    existing = await db.scalar(
-        select(ActivityEnrollment).where(
-            ActivityEnrollment.activity_id == activity.id,
-            ActivityEnrollment.user_id == current_user.id,
-        )
-    )
-    if existing:
-        if existing.status == "joined":
-            raise HTTPException(status_code=409, detail="Already enrolled")
-        # Re-join after a previous cancellation (idempotent re-enroll behavior).
-        existing.status = "joined"
-        await db.commit()
-        await db.refresh(existing)
-        enrollment = existing
-    else:
-        enrollment = ActivityEnrollment(
-            activity_id=activity.id,
-            user_id=current_user.id,
-            status="joined",
-        )
-        db.add(enrollment)
-        try:
-            await db.commit()
-        except IntegrityError as exc:
-            await db.rollback()
-            raise HTTPException(status_code=409, detail="Already enrolled") from exc
-        await db.refresh(enrollment)
+    enrollment = await enroll_user_in_activity(db, current_user.id, activity)
 
     logger.info(
         "enroll_activity user_id=%s request_id=%s activity_id=%s enrollment_id=%s",
@@ -540,6 +505,8 @@ async def update_activity(
     activity = await db.scalar(select(Activity).where(Activity.id == activity_pk))
     if not activity:
         raise HTTPException(status_code=404, detail="Activity not found")
+    if is_city_hall_activity(activity):
+        raise HTTPException(status_code=400, detail="City hall cannot be modified here")
     if activity.organizer_id != current_user.id:
         raise HTTPException(status_code=403, detail="Only organizer can update activity")
 
@@ -595,6 +562,8 @@ async def cancel_activity(
     activity = await db.scalar(select(Activity).where(Activity.id == activity_pk))
     if not activity:
         raise HTTPException(status_code=404, detail="Activity not found")
+    if is_city_hall_activity(activity):
+        raise HTTPException(status_code=400, detail="City hall cannot be cancelled here")
     if activity.organizer_id != current_user.id:
         raise HTTPException(status_code=403, detail="Only organizer can cancel activity")
     if activity.activity_status in {"cancelled", "ended"}:

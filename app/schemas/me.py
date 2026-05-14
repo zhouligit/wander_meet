@@ -57,6 +57,8 @@ class UpdateMeRequest(BaseModel):
 
 class MyActivitiesItem(BaseModel):
     activityId: str
+    #: ``event`` 普通活动；``city_hall`` 城市大群（默认兼容旧客户端）
+    activityKind: str = "event"
     title: str
     startAt: datetime
     locationName: str
@@ -82,6 +84,8 @@ class PremiumData(BaseModel):
 
 class MyChatItem(BaseModel):
     activityId: str
+    #: ``event`` | ``city_hall``，默认 ``event`` 兼容旧客户端
+    activityKind: str = "event"
     title: str
     activityStatus: str
     memberCount: int

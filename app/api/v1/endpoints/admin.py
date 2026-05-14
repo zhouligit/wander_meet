@@ -22,7 +22,11 @@ async def admin_activities(
     db: AsyncSession = Depends(get_db_session),
     _: User = Depends(get_admin_user),
 ) -> APIResponse[dict]:
-    filters = [Activity.activity_status == activityStatus] if activityStatus else []
+    filters = [
+        Activity.activity_kind == "event",
+    ]
+    if activityStatus:
+        filters.append(Activity.activity_status == activityStatus)
     total = (await db.execute(select(func.count(Activity.id)).where(*filters))).scalar_one()
     rows = (
         (
