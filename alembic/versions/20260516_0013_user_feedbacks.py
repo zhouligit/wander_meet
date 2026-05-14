@@ -23,7 +23,7 @@ def upgrade() -> None:
         sa.Column("user_id", sa.BigInteger(), nullable=False),
         sa.Column("scene", sa.String(length=32), nullable=False),
         sa.Column("description", sa.Text(), nullable=False),
-        sa.Column("expectation", sa.Text(), nullable=False, server_default=""),
+        sa.Column("expectation", sa.String(length=500), nullable=False, server_default=""),
         sa.Column("contact_willing", sa.Boolean(), nullable=False, server_default="0"),
         sa.Column("contact_note", sa.String(length=160), nullable=False, server_default=""),
         sa.Column("platform", sa.String(length=16), nullable=False, server_default="mp-weixin"),

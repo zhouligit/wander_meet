@@ -17,7 +17,7 @@ class UserFeedback(Base):
     )
     scene: Mapped[str] = mapped_column(String(32), index=True)
     description: Mapped[str] = mapped_column(Text())
-    expectation: Mapped[str] = mapped_column(Text(), default="", server_default="")
+    expectation: Mapped[str] = mapped_column(String(500), default="", server_default="")
     contact_willing: Mapped[bool] = mapped_column(Boolean(), default=False, server_default="0")
     contact_note: Mapped[str] = mapped_column(String(160), default="", server_default="")
     platform: Mapped[str] = mapped_column(String(16), default="mp-weixin", server_default="mp-weixin")
