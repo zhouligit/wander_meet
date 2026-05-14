@@ -16,6 +16,8 @@ class Activity(Base):
     city_hall_province_code: Mapped[str | None] = mapped_column(String(8), nullable=True, index=True)
     #: 城市大群：省内排序键（展示名小写或城市码小写，兼容首字母/区划序）
     city_hall_sort_key: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    #: 城市大群：城市码（与 ``/city-groups`` 的 cityCode 一致；库表由迁移 ``uq_activities_city_hall_city_code`` 唯一约束）
+    city_hall_city_code: Mapped[str | None] = mapped_column(String(32), nullable=True)
     organizer_id: Mapped[int] = mapped_column(index=True)
     title: Mapped[str] = mapped_column(String(80), index=True)
     description: Mapped[str] = mapped_column(Text())
