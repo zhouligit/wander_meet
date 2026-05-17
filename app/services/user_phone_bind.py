@@ -17,6 +17,15 @@ def user_has_phone(user: User) -> bool:
     return bool(p and len(p) >= 11)
 
 
+def mask_user_phone(user: User) -> str:
+    if not user_has_phone(user):
+        return ""
+    p = user.phone
+    if p and len(p) >= 11:
+        return f"{p[:3]}****{p[-4:]}"
+    return "***********"
+
+
 async def bind_phone_to_user(
     db: AsyncSession,
     current_user: User,

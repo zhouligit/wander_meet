@@ -40,7 +40,7 @@ from app.schemas.auth import LoginUser
 from app.schemas.phone_bind import BindPhoneData, BindPhoneSmsRequest, BindPhoneWechatRequest
 from app.services.auth_refresh import issue_refresh_token
 from app.services.phone_validation import parse_cn_mobile
-from app.services.user_phone_bind import bind_phone_to_user, user_has_phone
+from app.services.user_phone_bind import bind_phone_to_user, mask_user_phone, user_has_phone
 from app.services.user_profile_fields import bio_from_user, tags_from_user
 from app.services.wechat_miniapp import WechatLoginError, get_phone_number_from_code
 from app.db.session import redis_client
@@ -54,12 +54,7 @@ _TRAVELER_ROLE_MAX = 2
 
 
 def _phone_masked(user: User) -> str:
-    if not user_has_phone(user):
-        return ""
-    p = user.phone
-    if p and len(p) >= 11:
-        return f"{p[:3]}****{p[-4:]}"
-    return "***********"
+    return mask_user_phone(user)
 
 
 def _traveler_roles_list(user: User) -> list[str]:

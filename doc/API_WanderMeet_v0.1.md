@@ -7,6 +7,9 @@
 > **变更备忘（2026-05-06）**  
 > - `GET/PATCH /me` 补写 `gender`（与当前后端一致）。  
 > - 新增 **§5.1 规划：资料与引导扩展（草案）**，与 `doc/WanderMeet_Nomadtable_Onboarding_对照.md` §5、`doc/TODO_Backend_NextSteps.md` §5 对齐；**草案字段未全部落地代码前以本节标注为准**。
+>
+> **变更备忘（2026-05-17）**  
+> - 管理端新增 **§36.1 用户检索**、**§36.2 合并账号**（微信 openid 与短信手机号重复账号运维）。
 
 统一响应外层：
 
@@ -1403,6 +1406,174 @@ curl -X PATCH "http://127.0.0.1:8001/api/v1/wm/me/chats/act_1/read" \
 ## 36. 解封用户
 
 ### `POST /api/v1/wm/admin/users/:userId/unban`
+
+---
+
+## 36.1 运维：用户检索（重复账号排查）
+
+### `GET /api/v1/wm/admin/users/search`
+
+需 **管理员** 登录（`users.role = admin`），`Authorization: Bearer <accessToken>`。
+
+用于在合并前定位「短信账号」与「微信 openid 账号」两条记录对应的 `userId`。
+
+### 请求参数
+
+| 参数 | 位置 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- | --- |
+| phone | query | string | 否* | 大陆 11 位手机号 |
+| mpOpenid | query | string | 否* | 小程序 openid（完整） |
+| userId | query | string | 否* | 公开用户 ID，如 `u_12` |
+| limit | query | number | 否 | 默认 `20`，最大 `50` |
+
+\* `phone`、`mpOpenid`、`userId` **至少填一项**；多项时为 **或** 关系（命中任一条件即返回）。
+
+### 请求示例
+
+```
+GET /api/v1/wm/admin/users/search?phone=13800138000 HTTP/1.1
+Authorization: Bearer wm_at_xxx
+```
+
+### 响应 `data`
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| list | array | 匹配用户列表 |
+
+`list[]` 元素：
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| userId | string | 如 `u_12` |
+| nickname | string | 昵称 |
+| phoneMasked | string | 脱敏手机号；未绑定真实手机时为空 |
+| phoneBound | boolean | 是否已绑定大陆手机号 |
+| hasMpOpenid | boolean | 是否有关联微信 openid |
+| mpOpenidSuffix | string \| null | openid 后 6 位（便于核对，非完整 openid） |
+| status | string | `active` \| `banned` 等 |
+| createdAt | string | 注册时间 ISO 8601 |
+
+### 响应示例
+
+```json
+{
+  "code": 0,
+  "message": "ok",
+  "data": {
+    "list": [
+      {
+        "userId": "u_3",
+        "nickname": "旅人8000",
+        "phoneMasked": "138****8000",
+        "phoneBound": true,
+        "hasMpOpenid": false,
+        "mpOpenidSuffix": null,
+        "status": "active",
+        "createdAt": "2026-04-20T08:00:00Z"
+      },
+      {
+        "userId": "u_42",
+        "nickname": "旅人a1b2",
+        "phoneMasked": "",
+        "phoneBound": false,
+        "hasMpOpenid": true,
+        "mpOpenidSuffix": "c1d2e3",
+        "status": "active",
+        "createdAt": "2026-05-17T10:00:00Z"
+      }
+    ]
+  }
+}
+```
+
+### 错误
+
+| HTTP | 说明 |
+| --- | --- |
+| 400 | 未提供任何检索条件，或手机号格式无效 |
+| 403 | 非管理员 |
+
+---
+
+## 36.2 运维：合并用户账号
+
+### `POST /api/v1/wm/admin/users/merge`
+
+将 **源账号**（`fromUserId`）上的业务数据迁入 **主账号**（`toUserId`），并 **删除源账号**。典型场景：用户先短信注册（`u_3`），后微信登录又生成临时号（`u_42`），需合并为一条。
+
+**方向约定（重要）**
+
+| 字段 | 角色 | 说明 |
+| --- | --- | --- |
+| `fromUserId` | 被删除 | 多为纯微信账号（有 `mpOpenid`、无真实手机号） |
+| `toUserId` | 保留 | 多为先有手机号的短信账号 |
+
+与用户自助「绑定手机号」触发的合并逻辑一致（迁移报名、活动、群聊、私信等外键；将 `mp_openid` 写入主账号）。
+
+### 请求体
+
+| 字段 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| fromUserId | string | 是 | 源用户，如 `u_42` |
+| toUserId | string | 是 | 主用户，如 `u_3` |
+| note | string | 否 | 运维备注（写入服务日志，最长 500 字） |
+
+### 请求示例
+
+```json
+POST /api/v1/wm/admin/users/merge HTTP/1.1
+Authorization: Bearer wm_at_xxx
+Content-Type: application/json
+
+{
+  "fromUserId": "u_42",
+  "toUserId": "u_3",
+  "note": "微信重复账号合并"
+}
+```
+
+### 响应 `data`
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| fromUserId | string | 已删除的源账号 ID |
+| toUserId | string | 保留的主账号 ID |
+| phoneMasked | string | 合并后主账号脱敏手机号 |
+| phoneBound | boolean | 主账号是否已绑定手机 |
+| mpOpenidTransferred | boolean | 是否将源账号的 openid 挂到主账号（主账号原先无 openid 时为 true） |
+
+### 响应示例
+
+```json
+{
+  "code": 0,
+  "message": "ok",
+  "data": {
+    "fromUserId": "u_42",
+    "toUserId": "u_3",
+    "phoneMasked": "138****8000",
+    "phoneBound": true,
+    "mpOpenidTransferred": true
+  }
+}
+```
+
+### 错误
+
+| HTTP | 说明 |
+| --- | --- |
+| 400 | `fromUserId` 与 `toUserId` 相同，或 ID 格式无效 |
+| 403 | 非管理员 |
+| 404 | 任一用户不存在 |
+| 409 | 两账号绑定了**不同**手机号，或绑定了**不同**微信 openid，需人工处理后再合并 |
+
+### 运维流程建议
+
+1. `GET /admin/users/search?phone=...` 找到短信账号 `u_3`。  
+2. 用微信 openid 或 `userId` 再搜到临时号 `u_42`。  
+3. `POST /admin/users/merge`，`fromUserId=u_42`，`toUserId=u_3`。  
+4. 通知用户重新微信登录，应进入 `u_3`。
 
 ---
 

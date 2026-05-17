@@ -79,6 +79,8 @@
 - `PATCH /api/v1/wm/admin/reports/{reportId}`
 - `POST /api/v1/wm/admin/users/{userId}/ban`
 - `POST /api/v1/wm/admin/users/{userId}/unban`
+- `GET /api/v1/wm/admin/users/search`（运维：重复账号排查）
+- `POST /api/v1/wm/admin/users/merge`（运维：合并微信/短信重复账号）
 
 ## Next Milestones
 
