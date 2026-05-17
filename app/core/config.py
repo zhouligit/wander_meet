@@ -91,6 +91,14 @@ class Settings(BaseSettings):
     auth_sms_ip_limit_per_minute: int = 30
     #: 短信登录：同一 IP 每分钟最多次数（0=不限制）
     auth_login_ip_limit_per_minute: int = 120
+    #: 微信登录：同一 IP 每分钟最多次数（0=不限制）
+    auth_wechat_login_ip_limit_per_minute: int = 120
+
+    #: 微信小程序 AppID / AppSecret（``auth/wechat/login`` 调 jscode2session）
+    wx_mp_appid: str = ""
+    wx_mp_appsecret: str = ""
+    #: 本地/测试：不调微信，用 ``code`` 派生固定 openid（上线务必 false）
+    wx_mp_use_mock: bool = False
 
     @property
     def sqlalchemy_database_uri(self) -> str:

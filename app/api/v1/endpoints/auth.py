@@ -10,7 +10,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import bearer_scheme
 from app.core.config import get_settings
-from app.core.security import create_access_token, decode_access_token, hash_phone
+from app.core.security import (
+    create_access_token,
+    decode_access_token,
+    hash_phone,
+    hash_wechat_openid,
+)
 from app.db.session import get_db_session, redis_client
 from app.services.auth_blacklist import blacklist_access_jti
 from app.services.auth_refresh import issue_refresh_token, rotate_refresh_token, revoke_all_refresh_for_user
@@ -18,6 +23,7 @@ from app.services.aliyun_sms import AliyunSmsError, send_sms_aliyun_sync
 from app.services.ihuyi_sms import IhuiSmsError, send_sms_submit_sync
 from app.services.ip_rate_limit import enforce_auth_ip_rate_limit
 from app.services.phone_validation import parse_cn_mobile
+from app.services.wechat_miniapp import WechatLoginError, code_to_session
 from app.models.user import User
 from app.schemas.datetime_iso import datetime_to_rfc3339_utc_z
 from app.schemas.auth import (
@@ -29,6 +35,7 @@ from app.schemas.auth import (
     SMSLoginRequest,
     SendSMSCodeData,
     SendSMSCodeRequest,
+    WechatLoginRequest,
 )
 from app.schemas.common import APIResponse
 
@@ -52,6 +59,36 @@ _limit_sms_send = _limit_sms_send_ip
 
 async def _limit_sms_login_ip(request: Request) -> None:
     await enforce_auth_ip_rate_limit(request, "sms_login")
+
+
+async def _limit_wechat_login_ip(request: Request) -> None:
+    await enforce_auth_ip_rate_limit(request, "wechat_login")
+
+
+async def _build_login_response(user: User) -> SMSLoginData:
+    settings = get_settings()
+    access_token = create_access_token(user.id)
+    refresh_raw = await issue_refresh_token(user.id, settings.refresh_token_expires_seconds)
+    return SMSLoginData(
+        accessToken=access_token,
+        expiresIn=settings.access_token_expires_seconds,
+        refreshToken=refresh_raw,
+        user=LoginUser(
+            userId=f"u_{user.id}",
+            nickname=user.nickname,
+            avatarUrl=user.avatar_url,
+            gender=user.gender,
+            status=user.status,
+            onboardingCompletedAt=datetime_to_rfc3339_utc_z(user.onboarding_completed_at),
+        ),
+    )
+
+
+def _ensure_user_can_login(user: User) -> None:
+    if user.status == "banned":
+        raise HTTPException(status_code=403, detail="User is banned")
+    if user.status == "restricted":
+        raise HTTPException(status_code=403, detail="User is restricted")
 
 
 @router.post("/sms/send", dependencies=[Depends(_limit_sms_send)])
@@ -193,24 +230,44 @@ async def sms_login(
         user.phone = phone
         await db.commit()
 
-    settings = get_settings()
-    access_token = create_access_token(user.id)
-    refresh_raw = await issue_refresh_token(user.id, settings.refresh_token_expires_seconds)
+    _ensure_user_can_login(user)
+    return APIResponse(data=await _build_login_response(user))
 
-    response_data = SMSLoginData(
-        accessToken=access_token,
-        expiresIn=settings.access_token_expires_seconds,
-        refreshToken=refresh_raw,
-        user=LoginUser(
-            userId=f"u_{user.id}",
-            nickname=user.nickname,
-            avatarUrl=user.avatar_url,
-            gender=user.gender,
-            status=user.status,
-            onboardingCompletedAt=datetime_to_rfc3339_utc_z(user.onboarding_completed_at),
-        ),
-    )
-    return APIResponse(data=response_data)
+
+@router.post("/wechat/login", dependencies=[Depends(_limit_wechat_login_ip)])
+async def wechat_login(
+    payload: WechatLoginRequest, db: AsyncSession = Depends(get_db_session)
+) -> APIResponse[SMSLoginData]:
+    """微信小程序 ``wx.login`` 的 code 换 openid 并签发 token（响应与短信登录一致）。"""
+    try:
+        session = await code_to_session(payload.code)
+    except WechatLoginError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    openid = session.openid
+    user = await db.scalar(select(User).where(User.mp_openid == openid))
+    if not user:
+        phone_hash = hash_wechat_openid(openid)
+        suffix = openid[-4:] if len(openid) >= 4 else openid
+        user = User(
+            phone=None,
+            phone_hash=phone_hash,
+            mp_openid=openid,
+            mp_unionid=session.unionid,
+            nickname=f"旅人{suffix}",
+            acquisition_source="mp_weixin",
+        )
+        db.add(user)
+        await db.commit()
+        await db.refresh(user)
+        logger.info("wechat_login_new_user user_id=%s openid_suffix=%s", user.id, suffix)
+    else:
+        if session.unionid and not user.mp_unionid:
+            user.mp_unionid = session.unionid
+            await db.commit()
+
+    _ensure_user_can_login(user)
+    return APIResponse(data=await _build_login_response(user))
 
 
 @router.post("/token/refresh")

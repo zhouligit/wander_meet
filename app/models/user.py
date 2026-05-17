@@ -12,6 +12,9 @@ class User(Base):
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     phone: Mapped[str | None] = mapped_column(String(20), nullable=True, index=True)
     phone_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    #: 本小程序 openid（微信一键登录）
+    mp_openid: Mapped[str | None] = mapped_column(String(64), nullable=True, unique=True)
+    mp_unionid: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
     nickname: Mapped[str] = mapped_column(String(32))
     gender: Mapped[str | None] = mapped_column(String(16), nullable=True)
     avatar_url: Mapped[str | None] = mapped_column(String(512), nullable=True)

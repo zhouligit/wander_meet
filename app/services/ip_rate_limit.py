@@ -19,7 +19,7 @@ def client_ip(request: Request) -> str:
 
 async def enforce_auth_ip_rate_limit(request: Request, bucket: str) -> None:
     """
-    bucket: ``sms_send`` | ``sms_login``
+    bucket: ``sms_send`` | ``sms_login`` | ``wechat_login``
     每分钟计数；limit<=0 表示关闭。
     """
     settings = get_settings()
@@ -27,6 +27,8 @@ async def enforce_auth_ip_rate_limit(request: Request, bucket: str) -> None:
         limit = settings.auth_sms_ip_limit_per_minute
     elif bucket == "sms_login":
         limit = settings.auth_login_ip_limit_per_minute
+    elif bucket == "wechat_login":
+        limit = settings.auth_wechat_login_ip_limit_per_minute
     else:
         limit = 0
     if limit <= 0:

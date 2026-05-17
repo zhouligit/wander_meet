@@ -15,6 +15,10 @@ class SMSLoginRequest(BaseModel):
     code: str = Field(min_length=4, max_length=8)
 
 
+class WechatLoginRequest(BaseModel):
+    code: str = Field(min_length=1, max_length=128)
+
+
 class LoginUser(BaseModel):
     userId: str
     nickname: str

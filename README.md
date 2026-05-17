@@ -42,6 +42,7 @@
 
 - `POST /api/v1/wm/auth/sms/send`
 - `POST /api/v1/wm/auth/sms/login`
+- `POST /api/v1/wm/auth/wechat/login`（小程序 `wx.login` 的 code）
 - `POST /api/v1/wm/auth/token/refresh`
 - `GET /api/v1/wm/activities?cityCode=110000&page=1&pageSize=20`
 - `GET /api/v1/wm/activities/{activityId}` (requires Bearer token)
