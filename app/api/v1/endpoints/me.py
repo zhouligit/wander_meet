@@ -34,7 +34,16 @@ from app.schemas.place_activity import (
     PlaceActivityAlertItem,
     PlaceActivityAlertListData,
 )
+from app.core.config import get_settings
+from app.core.security import create_access_token
+from app.schemas.auth import LoginUser
+from app.schemas.phone_bind import BindPhoneData, BindPhoneSmsRequest, BindPhoneWechatRequest
+from app.services.auth_refresh import issue_refresh_token
+from app.services.phone_validation import parse_cn_mobile
+from app.services.user_phone_bind import bind_phone_to_user, user_has_phone
 from app.services.user_profile_fields import bio_from_user, tags_from_user
+from app.services.wechat_miniapp import WechatLoginError, get_phone_number_from_code
+from app.db.session import redis_client
 
 router = APIRouter(prefix="/me", tags=["me"])
 
@@ -45,11 +54,11 @@ _TRAVELER_ROLE_MAX = 2
 
 
 def _phone_masked(user: User) -> str:
+    if not user_has_phone(user):
+        return ""
     p = user.phone
     if p and len(p) >= 11:
         return f"{p[:3]}****{p[-4:]}"
-    if len(user.phone_hash) >= 4:
-        return f"***{user.phone_hash[-4:]}"
     return "***********"
 
 
@@ -82,6 +91,7 @@ def build_me_data(user: User) -> MeData:
     return MeData(
         userId=f"u_{user.id}",
         phoneMasked=_phone_masked(user),
+        phoneBound=user_has_phone(user),
         nickname=user.nickname,
         avatarUrl=user.avatar_url,
         gender=g,
@@ -587,6 +597,72 @@ async def delete_place_activity_alert(
     await db.delete(row)
     await db.commit()
     return APIResponse(data={"deleted": True})
+
+
+def _login_user_from_model(user: User) -> LoginUser:
+    return LoginUser(
+        userId=f"u_{user.id}",
+        nickname=user.nickname,
+        avatarUrl=user.avatar_url,
+        gender=user.gender,
+        status=user.status,
+        onboardingCompletedAt=datetime_to_rfc3339_utc_z(user.onboarding_completed_at),
+    )
+
+
+async def _bind_phone_response(db: AsyncSession, user: User, merged: bool) -> APIResponse[BindPhoneData]:
+    data = BindPhoneData(
+        phoneMasked=_phone_masked(user),
+        phoneBound=user_has_phone(user),
+        merged=merged,
+    )
+    if merged:
+        settings = get_settings()
+        data.accessToken = create_access_token(user.id)
+        data.expiresIn = settings.access_token_expires_seconds
+        data.refreshToken = await issue_refresh_token(user.id, settings.refresh_token_expires_seconds)
+        data.user = _login_user_from_model(user)
+    return APIResponse(data=data)
+
+
+@router.post("/phone/bind-wechat")
+async def bind_phone_wechat(
+    payload: BindPhoneWechatRequest,
+    db: AsyncSession = Depends(get_db_session),
+    current_user: User = Depends(get_current_user),
+) -> APIResponse[BindPhoneData]:
+    """小程序 ``getPhoneNumber`` 的 code 绑定手机号；若手机号已有短信账号则合并。"""
+    if current_user.status != "active":
+        raise HTTPException(status_code=403, detail="User is restricted")
+    try:
+        phone = await get_phone_number_from_code(payload.phoneCode)
+    except WechatLoginError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    user, merged = await bind_phone_to_user(db, current_user, phone)
+    return await _bind_phone_response(db, user, merged)
+
+
+@router.post("/phone/bind-sms")
+async def bind_phone_sms(
+    payload: BindPhoneSmsRequest,
+    db: AsyncSession = Depends(get_db_session),
+    current_user: User = Depends(get_current_user),
+) -> APIResponse[BindPhoneData]:
+    """短信验证码绑定手机号（微信用户备用）。"""
+    if current_user.status != "active":
+        raise HTTPException(status_code=403, detail="User is restricted")
+    phone = parse_cn_mobile(payload.phone)
+    if phone is None:
+        raise HTTPException(status_code=400, detail="手机号格式不正确")
+
+    redis_key = f"wm:sms:bind_phone:{phone}"
+    cached = await redis_client.get(redis_key)
+    if not cached or cached != payload.code:
+        raise HTTPException(status_code=400, detail="Invalid or expired code")
+    await redis_client.delete(redis_key)
+
+    user, merged = await bind_phone_to_user(db, current_user, phone)
+    return await _bind_phone_response(db, user, merged)
 
 
 @router.post("/feedback")

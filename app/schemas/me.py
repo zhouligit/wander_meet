@@ -20,6 +20,8 @@ UserGender = Literal["male", "female", "unspecified"]
 class MeData(BaseModel):
     userId: str
     phoneMasked: str
+    #: 是否已绑定大陆手机号（微信一键登录用户初始为 false）
+    phoneBound: bool = False
     nickname: str
     avatarUrl: str | None = None
     gender: UserGender | None = None

@@ -1,22 +1,27 @@
-"""微信小程序 ``wx.login`` → ``jscode2session``。"""
+"""微信小程序：``jscode2session``、``access_token``、手机号快速验证。"""
 
 from __future__ import annotations
 
 import hashlib
+import json
 import logging
 from dataclasses import dataclass
 
 import httpx
 
 from app.core.config import get_settings
+from app.db.session import redis_client
 
 logger = logging.getLogger(__name__)
 
 _CODE2SESSION_URL = "https://api.weixin.qq.com/sns/jscode2session"
+_TOKEN_URL = "https://api.weixin.qq.com/cgi-bin/token"
+_PHONE_URL = "https://api.weixin.qq.com/wxa/business/getuserphonenumber"
+_ACCESS_TOKEN_REDIS_KEY = "wm:wx:mp_access_token"
 
 
 class WechatLoginError(Exception):
-    """微信登录失败（配置、code 无效或微信侧错误）。"""
+    """微信 API 调用失败（配置、code 无效或微信侧错误）。"""
 
 
 @dataclass(frozen=True)
@@ -27,7 +32,6 @@ class WechatSession:
 
 
 def mock_openid_from_code(code: str) -> str:
-    """测试用：同一 code 稳定映射为 openid。"""
     digest = hashlib.sha256(f"wm-mock:{code}".encode("utf-8")).hexdigest()[:28]
     return f"mock_{digest}"
 
@@ -67,8 +71,7 @@ async def code_to_session(code: str) -> WechatSession:
 
     errcode = data.get("errcode", 0)
     if errcode:
-        errmsg = data.get("errmsg") or "unknown"
-        logger.warning("jscode2session errcode=%s errmsg=%s", errcode, errmsg)
+        logger.warning("jscode2session errcode=%s errmsg=%s", errcode, data.get("errmsg"))
         raise WechatLoginError("Invalid or expired WeChat login code")
 
     openid = (data.get("openid") or "").strip()
@@ -78,3 +81,87 @@ async def code_to_session(code: str) -> WechatSession:
     unionid = (data.get("unionid") or "").strip() or None
     session_key = (data.get("session_key") or "").strip() or None
     return WechatSession(openid=openid, session_key=session_key, unionid=unionid)
+
+
+async def _fetch_access_token(appid: str, secret: str) -> tuple[str, int]:
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        resp = await client.get(
+            _TOKEN_URL,
+            params={"grant_type": "client_credential", "appid": appid, "secret": secret},
+        )
+        resp.raise_for_status()
+        data = resp.json()
+    if data.get("errcode"):
+        raise WechatLoginError(data.get("errmsg") or "Failed to get WeChat access_token")
+    token = (data.get("access_token") or "").strip()
+    expires_in = int(data.get("expires_in") or 7200)
+    if not token:
+        raise WechatLoginError("WeChat access_token missing")
+    return token, expires_in
+
+
+async def get_mp_access_token() -> str:
+    settings = get_settings()
+    if settings.wx_mp_use_mock:
+        return "mock_mp_access_token"
+
+    cached = await redis_client.get(_ACCESS_TOKEN_REDIS_KEY)
+    if cached:
+        return cached
+
+    appid = (settings.wx_mp_appid or "").strip()
+    secret = (settings.wx_mp_appsecret or "").strip()
+    if not appid or not secret:
+        raise WechatLoginError("WeChat mini program is not configured")
+
+    token, expires_in = await _fetch_access_token(appid, secret)
+    ttl = max(60, expires_in - 120)
+    await redis_client.set(_ACCESS_TOKEN_REDIS_KEY, token, ex=ttl)
+    return token
+
+
+def mock_phone_from_code(code: str) -> str:
+    """Mock：由 phoneCode 稳定生成 11 位测试号（非真实下发）。"""
+    n = int(hashlib.sha256(f"wm-mock-phone:{code}".encode()).hexdigest()[:8], 16) % 9000000000
+    return f"1{1000000000 + n}"[:11]
+
+
+async def get_phone_number_from_code(phone_code: str) -> str:
+    """小程序 ``getPhoneNumber`` 返回的 code → 纯手机号（大陆 11 位）。"""
+    settings = get_settings()
+    raw = (phone_code or "").strip()
+    if not raw:
+        raise WechatLoginError("phoneCode is required")
+
+    if settings.wx_mp_use_mock:
+        return mock_phone_from_code(raw)
+
+    access_token = await get_mp_access_token()
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.post(
+                f"{_PHONE_URL}?access_token={access_token}",
+                json={"code": raw},
+            )
+            resp.raise_for_status()
+            data = resp.json()
+    except httpx.HTTPError as exc:
+        logger.exception("getuserphonenumber HTTP failed")
+        raise WechatLoginError("WeChat phone service unavailable") from exc
+
+    errcode = data.get("errcode", 0)
+    if errcode:
+        logger.warning("getuserphonenumber errcode=%s errmsg=%s", errcode, data.get("errmsg"))
+        raise WechatLoginError("Invalid or expired WeChat phone code")
+
+    info = data.get("phone_info") or {}
+    if isinstance(info, str):
+        try:
+            info = json.loads(info)
+        except json.JSONDecodeError:
+            info = {}
+    pure = (info.get("purePhoneNumber") or info.get("phoneNumber") or "").strip()
+    digits = "".join(c for c in pure if c.isdigit())
+    if len(digits) >= 11:
+        return digits[-11:]
+    raise WechatLoginError("WeChat did not return a valid phone number")
