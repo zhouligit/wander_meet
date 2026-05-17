@@ -41,6 +41,8 @@ from app.schemas.auth import LoginUser
 from app.schemas.phone_bind import BindPhoneData, BindPhoneSmsRequest, BindPhoneWechatRequest
 from app.services.auth_refresh import issue_refresh_token
 from app.services.phone_validation import parse_cn_mobile
+from app.services.email_auth import user_has_email_account
+from app.services.email_validation import mask_email
 from app.services.user_phone_bind import bind_phone_to_user, mask_user_phone, user_has_phone
 from app.services.user_profile_fields import bio_from_user, tags_from_user
 from app.services.wechat_miniapp import WechatLoginError, get_phone_number_from_code
@@ -89,6 +91,8 @@ def build_me_data(user: User) -> MeData:
         userId=f"u_{user.id}",
         phoneMasked=_phone_masked(user),
         phoneBound=user_has_phone(user),
+        emailMasked=mask_email(user.email) if user_has_email_account(user) else "",
+        emailBound=user_has_email_account(user),
         nickname=user.nickname,
         avatarUrl=user.avatar_url,
         gender=g,

@@ -10,6 +10,12 @@
 >
 > **变更备忘（2026-05-17）**  
 > - 管理端新增 **§36.1 用户检索**、**§36.2 合并账号**（微信 openid 与短信手机号重复账号运维）。
+>
+> **变更备忘（2026-05-18）**  
+> - 新增 **§2.1 微信登录**、**§2.2 邮箱注册**、**§2.3 邮箱登录**（H5）。  
+> - **§4** `GET /me` 增加 `emailMasked`、`emailBound`、`phoneBound`。  
+> - 新增 **§4.1 / §4.2** 绑定手机号（微信 / 短信）。  
+> - 协作说明见 `doc/mail_login.md`。
 
 统一响应外层：
 
@@ -131,6 +137,112 @@ Content-Type: application/json
 
 ---
 
+## 2.1 微信小程序登录
+
+### `POST /api/v1/wm/auth/wechat/login`
+
+小程序 `wx.login` 取得的 **code**（非手机号 code）。响应结构与 §2 短信登录相同。
+
+### 请求参数
+
+| 参数 | 位置 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- | --- |
+| code | body | string | 是 | `wx.login` 返回的临时 code |
+
+### 请求示例
+
+```json
+{
+  "code": "081abc..."
+}
+```
+
+### 响应 `data`
+
+与 §2 相同：`accessToken`、`expiresIn`、`refreshToken`、`user`。
+
+### 错误
+
+| HTTP | 说明 |
+| --- | --- |
+| 400 | code 无效或过期、微信未配置 |
+| 429 | IP 限流 |
+
+---
+
+## 2.2 邮箱注册（H5）
+
+### `POST /api/v1/wm/auth/email/register`
+
+v1 为 **密码注册**，不发邮件验证码。成功即返回 token（无需再调登录）。
+
+### 请求参数
+
+| 参数 | 位置 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- | --- |
+| email | body | string | 是 | 邮箱，服务端规范为小写 |
+| password | body | string | 是 | ≥8 位，含字母与数字 |
+| nickname | body | string | 否 | 昵称；缺省从邮箱前缀生成 |
+
+### 请求示例
+
+```json
+{
+  "email": "user@example.com",
+  "password": "Passw0rd1",
+  "nickname": "旅人小王"
+}
+```
+
+### 响应 `data`
+
+与 §2 相同。
+
+### 错误
+
+| HTTP | 说明 |
+| --- | --- |
+| 400 | 邮箱或密码格式不符 |
+| 409 | 邮箱已注册 |
+| 429 | IP 或同邮箱注册过于频繁 |
+
+---
+
+## 2.3 邮箱密码登录（H5）
+
+### `POST /api/v1/wm/auth/email/login`
+
+### 请求参数
+
+| 参数 | 位置 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- | --- |
+| email | body | string | 是 | 邮箱 |
+| password | body | string | 是 | 密码 |
+
+### 请求示例
+
+```json
+{
+  "email": "user@example.com",
+  "password": "Passw0rd1"
+}
+```
+
+### 响应 `data`
+
+与 §2 相同。
+
+### 错误
+
+| HTTP | 说明 |
+| --- | --- |
+| 400 | 邮箱格式错误 |
+| 401 | 邮箱或密码错误 |
+| 403 | 用户封禁 / 限制 |
+| 429 | IP 限流或连续失败临时锁定 |
+
+---
+
 ## 3. 刷新令牌（可选）
 
 ### `POST /api/v1/wm/auth/token/refresh`
@@ -192,7 +304,10 @@ Authorization: Bearer wm_at_xxx
 | 字段 | 类型 | 说明 |
 | --- | --- | --- |
 | userId | string | 用户 ID |
-| phoneMasked | string | 脱敏手机号（当前实现多为占位脱敏，见后端实现） |
+| phoneMasked | string | 脱敏手机号；未绑定真实手机时为空字符串 |
+| phoneBound | boolean | 是否已绑定大陆手机号 |
+| emailMasked | string | 脱敏邮箱，如 `u***@example.com`；非邮箱账号为空 |
+| emailBound | boolean | 是否为邮箱密码账号（H5 注册） |
 | nickname | string | 昵称 |
 | avatarUrl | string \| null | 头像 URL |
 | gender | string \| null | `male` \| `female` \| `unspecified`，未填为 `null` |
@@ -217,6 +332,9 @@ Authorization: Bearer wm_at_xxx
   "data": {
     "userId": "u_10001",
     "phoneMasked": "138****8000",
+    "phoneBound": true,
+    "emailMasked": "",
+    "emailBound": false,
     "nickname": "旅人小王",
     "avatarUrl": "https://cdn.example.com/a.png",
     "gender": "male",
@@ -260,6 +378,58 @@ Authorization: Bearer wm_at_xxx
 | code | 说明 |
 | --- | --- |
 | 404 | 用户不存在或不可见 |
+
+---
+
+## 4.1 绑定手机号（微信快速验证）
+
+### `POST /api/v1/wm/me/phone/bind-wechat`
+
+需登录。小程序 `button open-type="getPhoneNumber"` 取得的 **phoneCode**。
+
+### 请求体
+
+| 字段 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| phoneCode | string | 是 | 微信返回的 code |
+
+### 响应 `data`
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| phoneMasked | string | 脱敏手机号 |
+| phoneBound | boolean | 是否已绑定 |
+| merged | boolean | 是否合并到已有短信账号 |
+| accessToken | string | 仅 `merged=true` 时下发新 token |
+| refreshToken | string | 仅合并时 |
+| expiresIn | number | 仅合并时 |
+| user | object | 仅合并时 |
+
+若手机号已有短信账号且无冲突 openid，业务数据并入该账号并删除当前微信临时号。
+
+### 错误
+
+| HTTP | 说明 |
+| --- | --- |
+| 400 | phoneCode 无效 |
+| 409 | 该手机号已绑定其他微信；或合并冲突 |
+
+---
+
+## 4.2 绑定手机号（短信验证码）
+
+### `POST /api/v1/wm/me/phone/bind-sms`
+
+需登录。发码时 `scene` 传 **`bind_phone`**。
+
+### 请求体
+
+| 字段 | 类型 | 必填 |
+| --- | --- | --- |
+| phone | string | 是 |
+| code | string | 是 |
+
+响应结构同 §4.1。
 
 ---
 

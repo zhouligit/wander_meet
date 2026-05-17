@@ -23,10 +23,13 @@ from app.services.aliyun_sms import AliyunSmsError, send_sms_aliyun_sync
 from app.services.ihuyi_sms import IhuiSmsError, send_sms_submit_sync
 from app.services.ip_rate_limit import enforce_auth_ip_rate_limit
 from app.services.phone_validation import parse_cn_mobile
+from app.services.email_auth import authenticate_email_user, register_email_user
 from app.services.wechat_miniapp import WechatLoginError, code_to_session
 from app.models.user import User
 from app.schemas.datetime_iso import datetime_to_rfc3339_utc_z
 from app.schemas.auth import (
+    EmailLoginRequest,
+    EmailRegisterRequest,
     LoginUser,
     LogoutData,
     RefreshTokenData,
@@ -63,6 +66,14 @@ async def _limit_sms_login_ip(request: Request) -> None:
 
 async def _limit_wechat_login_ip(request: Request) -> None:
     await enforce_auth_ip_rate_limit(request, "wechat_login")
+
+
+async def _limit_email_register_ip(request: Request) -> None:
+    await enforce_auth_ip_rate_limit(request, "email_register")
+
+
+async def _limit_email_login_ip(request: Request) -> None:
+    await enforce_auth_ip_rate_limit(request, "email_login")
 
 
 async def _build_login_response(user: User) -> SMSLoginData:
@@ -231,6 +242,30 @@ async def sms_login(
         await db.commit()
 
     _ensure_user_can_login(user)
+    return APIResponse(data=await _build_login_response(user))
+
+
+@router.post("/email/register", dependencies=[Depends(_limit_email_register_ip)])
+async def email_register(
+    payload: EmailRegisterRequest, db: AsyncSession = Depends(get_db_session)
+) -> APIResponse[SMSLoginData]:
+    """H5 邮箱注册（密码）；成功即签发 token，与短信登录响应一致。"""
+    user = await register_email_user(
+        db,
+        email=payload.email,
+        password=payload.password,
+        nickname=payload.nickname,
+    )
+    _ensure_user_can_login(user)
+    return APIResponse(data=await _build_login_response(user))
+
+
+@router.post("/email/login", dependencies=[Depends(_limit_email_login_ip)])
+async def email_login(
+    payload: EmailLoginRequest, db: AsyncSession = Depends(get_db_session)
+) -> APIResponse[SMSLoginData]:
+    """H5 邮箱密码登录。"""
+    user = await authenticate_email_user(db, email=payload.email, password=payload.password)
     return APIResponse(data=await _build_login_response(user))
 
 

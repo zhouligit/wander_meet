@@ -43,7 +43,10 @@
 - `POST /api/v1/wm/auth/sms/send`
 - `POST /api/v1/wm/auth/sms/login`
 - `POST /api/v1/wm/auth/wechat/login`（小程序 `wx.login` 的 code）
+- `POST /api/v1/wm/auth/email/register`（H5 邮箱注册，见 `doc/mail_login.md`）
+- `POST /api/v1/wm/auth/email/login`（H5 邮箱登录）
 - `POST /api/v1/wm/auth/token/refresh`
+- `POST /api/v1/wm/auth/logout`
 - `GET /api/v1/wm/activities?cityCode=110000&page=1&pageSize=20`
 - `GET /api/v1/wm/activities/{activityId}` (requires Bearer token)
 - `POST /api/v1/wm/activities` (requires Bearer token)
@@ -55,8 +58,10 @@
 - `GET /api/v1/wm/activities/{activityId}/messages`
 - `POST /api/v1/wm/activities/{activityId}/messages`
 - `GET /api/v1/wm/meta/activity-categories`
-- `GET /api/v1/wm/me`
+- `GET /api/v1/wm/me`（含 `phoneBound`、`emailMasked`、`emailBound`）
 - `PATCH /api/v1/wm/me`
+- `POST /api/v1/wm/me/phone/bind-wechat`
+- `POST /api/v1/wm/me/phone/bind-sms`
 - `GET /api/v1/wm/me/activities?role=organized|joined`
 - `GET /api/v1/wm/me/chats?page=1&pageSize=20`
 - `PATCH /api/v1/wm/me/chats/{activityId}/read`

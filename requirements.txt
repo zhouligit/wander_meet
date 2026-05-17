@@ -9,5 +9,6 @@ httpx
 alembic
 pymysql
 PyJWT
+bcrypt>=4.0
 cryptography
 alibabacloud-dysmsapi20170525>=4.2.0,<5

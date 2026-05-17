@@ -17,8 +17,12 @@
 | 字段 | 类型 | 约束 | 说明 |
 | --- | --- | --- | --- |
 | id | BIGINT | PK | 用户主键 |
-| phone_hash | VARCHAR(64) | UNIQUE, NOT NULL | 手机号哈希（不存明文，或 KMS 加密列） |
-| phone_cipher | VARBINARY | NULL | 可选：可逆加密用于找回（敏感，慎存） |
+| phone | VARCHAR(20) | NULL | 大陆手机号明文（可选） |
+| phone_hash | VARCHAR(64) | UNIQUE, NOT NULL | 手机 / 微信 / 邮箱占位哈希（见实现） |
+| mp_openid | VARCHAR(64) | UNIQUE, NULL | 小程序 openid |
+| mp_unionid | VARCHAR(64) | NULL | 微信 unionid（可选） |
+| email | VARCHAR(254) | UNIQUE, NULL | 邮箱（H5 账号，小写存储） |
+| password_hash | VARCHAR(255) | NULL | bcrypt 密码哈希（仅邮箱账号） |
 | nickname | VARCHAR(32) | NOT NULL | 昵称 |
 | avatar_url | VARCHAR(512) | NULL | 头像 URL |
 | status | VARCHAR(16) | NOT NULL, DEFAULT `active` | `active` \| `banned` \| `restricted` |

@@ -19,6 +19,17 @@ class WechatLoginRequest(BaseModel):
     code: str = Field(min_length=1, max_length=128)
 
 
+class EmailRegisterRequest(BaseModel):
+    email: str = Field(min_length=3, max_length=254)
+    password: str = Field(min_length=8, max_length=128)
+    nickname: str | None = Field(default=None, max_length=32)
+
+
+class EmailLoginRequest(BaseModel):
+    email: str = Field(min_length=3, max_length=254)
+    password: str = Field(min_length=1, max_length=128)
+
+
 class LoginUser(BaseModel):
     userId: str
     nickname: str

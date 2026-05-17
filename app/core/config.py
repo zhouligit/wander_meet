@@ -93,6 +93,16 @@ class Settings(BaseSettings):
     auth_login_ip_limit_per_minute: int = 120
     #: 微信登录：同一 IP 每分钟最多次数（0=不限制）
     auth_wechat_login_ip_limit_per_minute: int = 120
+    #: 邮箱注册：同一 IP 每分钟最多次数（0=不限制）
+    auth_email_register_ip_limit_per_minute: int = 20
+    #: 邮箱登录：同一 IP 每分钟最多次数（0=不限制）
+    auth_email_login_ip_limit_per_minute: int = 60
+    #: 同一邮箱两次注册请求最小间隔（秒）
+    auth_email_register_min_interval_seconds: int = 60
+    #: 连续登录失败多少次后临时锁定
+    auth_email_login_max_failures: int = 5
+    #: 登录失败锁定秒数
+    auth_email_login_lock_seconds: int = 900
 
     #: 微信小程序 AppID / AppSecret（``auth/wechat/login`` 调 jscode2session）
     wx_mp_appid: str = ""
