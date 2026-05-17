@@ -2,14 +2,19 @@
 
 from __future__ import annotations
 
+import logging
+
 from fastapi import HTTPException
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import hash_phone
 from app.models.user import User
 from app.services.phone_validation import parse_cn_mobile
 from app.services.user_account_merge import merge_user_into
+
+logger = logging.getLogger(__name__)
 
 
 def user_has_phone(user: User) -> bool:
@@ -62,8 +67,19 @@ async def bind_phone_to_user(
         to_id = existing.id
         if not existing.phone:
             existing.phone = normalized
-        await merge_user_into(db, from_user_id=from_id, to_user_id=to_id)
-        await db.commit()
+        try:
+            await merge_user_into(db, from_user_id=from_id, to_user_id=to_id)
+            await db.commit()
+        except IntegrityError as exc:
+            await db.rollback()
+            logger.exception("bind_phone merge IntegrityError from=%s to=%s", from_id, to_id)
+            raise HTTPException(
+                status_code=409,
+                detail="账号合并失败，请联系客服处理",
+            ) from exc
+        except ValueError as exc:
+            await db.rollback()
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
         merged_user = await db.scalar(select(User).where(User.id == to_id))
         if not merged_user:
             raise HTTPException(status_code=500, detail="merge failed")
@@ -72,6 +88,14 @@ async def bind_phone_to_user(
     # 无冲突：当前用户（多为纯微信账号）写入真实手机号
     current_user.phone = normalized
     current_user.phone_hash = target_hash
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError as exc:
+        await db.rollback()
+        logger.exception("bind_phone phone_hash conflict user_id=%s", current_user.id)
+        raise HTTPException(
+            status_code=409,
+            detail="该手机号已被其他账号使用",
+        ) from exc
     await db.refresh(current_user)
     return current_user, False

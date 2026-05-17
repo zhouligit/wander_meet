@@ -1,3 +1,4 @@
+import logging
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -46,6 +47,7 @@ from app.services.wechat_miniapp import WechatLoginError, get_phone_number_from_
 from app.db.session import redis_client
 
 router = APIRouter(prefix="/me", tags=["me"])
+logger = logging.getLogger(__name__)
 
 EPOCH_UTC = datetime(1970, 1, 1, tzinfo=UTC)
 
@@ -633,8 +635,18 @@ async def bind_phone_wechat(
         phone = await get_phone_number_from_code(payload.phoneCode)
     except WechatLoginError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    user, merged = await bind_phone_to_user(db, current_user, phone)
-    return await _bind_phone_response(db, user, merged)
+    except Exception as exc:
+        logger.exception("get_phone_number_from_code failed user_id=%s", current_user.id)
+        raise HTTPException(status_code=400, detail="获取微信手机号失败") from exc
+    try:
+        user, merged = await bind_phone_to_user(db, current_user, phone)
+        return await _bind_phone_response(db, user, merged)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        await db.rollback()
+        logger.exception("bind_phone_wechat failed user_id=%s", current_user.id)
+        raise HTTPException(status_code=500, detail="绑定手机号失败") from exc
 
 
 @router.post("/phone/bind-sms")
