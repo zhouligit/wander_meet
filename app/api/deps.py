@@ -1,10 +1,10 @@
 from fastapi import Depends, HTTPException, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import decode_access_token
 from app.services.auth_blacklist import is_jti_blacklisted
+from app.services.user_cache import load_user_for_auth
 from app.db.session import get_db_session
 from app.models.user import User
 
@@ -27,7 +27,7 @@ async def get_current_user(
     if await is_jti_blacklisted(payload.get("jti")):
         raise HTTPException(status_code=401, detail="Token revoked")
 
-    user = await db.scalar(select(User).where(User.id == user_id))
+    user = await load_user_for_auth(db, user_id)
     if not user:
         raise HTTPException(status_code=401, detail="User not found")
     if user.status == "banned":
@@ -57,7 +57,7 @@ async def get_optional_user(
         return None
     if await is_jti_blacklisted(payload.get("jti")):
         return None
-    user = await db.scalar(select(User).where(User.id == user_id))
+    user = await load_user_for_auth(db, user_id)
     if not user or user.status == "banned":
         return None
     return user

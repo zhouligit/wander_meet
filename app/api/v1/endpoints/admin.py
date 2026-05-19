@@ -5,6 +5,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_admin_user
+from app.services.user_cache import invalidate_user_cache
 from app.db.session import get_db_session
 from app.models.activity import Activity
 from app.models.user import User
@@ -117,6 +118,7 @@ async def admin_ban_user(
         return APIResponse(code=404, message="user not found", data={"status": "not_found"})
     user.status = "banned"
     await db.commit()
+    await invalidate_user_cache(uid)
     return APIResponse(data={"userId": f"u_{uid}", "status": "banned"})
 
 
@@ -132,6 +134,7 @@ async def admin_unban_user(
         return APIResponse(code=404, message="user not found", data={"status": "not_found"})
     user.status = "active"
     await db.commit()
+    await invalidate_user_cache(uid)
     return APIResponse(data={"userId": f"u_{uid}", "status": "active", "updatedAt": datetime.now(UTC)})
 
 
@@ -194,6 +197,8 @@ async def admin_merge_users_endpoint(
         to_user_id=to_id,
         note=payload.note,
     )
+    await invalidate_user_cache(from_id)
+    await invalidate_user_cache(to_id)
     _ = admin_user
     openid_after = (kept.mp_openid or "").strip()
     return APIResponse(

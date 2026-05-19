@@ -102,3 +102,18 @@
 ## 6. 备注（引导文档）
 
 - 对照文档中的 **§5 接口与数据库变动草案** 随评审更新；实现后以代码与 OpenAPI 为准，并回写本文 §5 勾选状态。
+
+---
+
+## 7. 性能与缓存
+
+详细清单与待办见 **`doc/PERF_Cache_and_Scale.md`**。
+
+- [x] `GET /meta/activity-categories`、`/meta/onboarding`、`/meta/city-groups` 进程内 `@lru_cache`。
+- [x] `GET /activities` 同城列表 Redis 短缓存（默认 60s）+ 发布/报名等写操作按 `city_code` 失效。
+- [x] 迁移 `20260520_0018`：`activities(activity_kind, activity_status, end_at, start_at)` 复合索引。
+- [x] `GET /activities/nearby` 短缓存；`GET /activities/{id}` 详情短缓存。
+- [x] `GET /me/chats` 未读：普通活动 Redis 计数 + 城群 bounded COUNT（见 `doc/PERF_Cache_and_Scale.md`）。
+- [x] `GET /me`、`/me/stats` 短缓存；鉴权用户行 Redis 缓存；`ended_at` 冗余 + 迁移 `20260521_0019`；meta `Cache-Control`。
+- [ ] 读写分离与压测（暂不实施）。
+- [ ] 定时任务：过期活动写 `ended_at` / 自动结束。

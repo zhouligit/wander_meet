@@ -3,7 +3,7 @@
 from datetime import UTC, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import false, or_
+from sqlalchemy import and_, false, func, or_
 from sqlalchemy.sql import ColumnElement
 
 from app.models.activity import Activity
@@ -29,8 +29,9 @@ def not_ended_condition(now_utc: datetime) -> ColumnElement[bool]:
 
 
 def past_activity_condition(now_utc: datetime) -> ColumnElement[bool]:
-    """已结束：库内 ended/cancelled，或 published 且 end_at 已过。"""
+    """已结束：``ended_at`` 已写、状态 ended/cancelled，或 published 且计划 ``end_at`` 已过。"""
     return or_(
+        Activity.ended_at.isnot(None),
         Activity.activity_status.in_(("cancelled", "ended")),
         and_(
             Activity.activity_status == "published",
@@ -38,6 +39,11 @@ def past_activity_condition(now_utc: datetime) -> ColumnElement[bool]:
             Activity.end_at < now_utc,
         ),
     )
+
+
+def my_activities_past_order():
+    """历史活动按实际/计划结束时间倒序。"""
+    return func.coalesce(Activity.ended_at, Activity.end_at, Activity.updated_at).desc()
 
 
 def upcoming_activity_condition(now_utc: datetime) -> ColumnElement[bool]:

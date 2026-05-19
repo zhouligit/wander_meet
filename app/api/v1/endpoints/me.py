@@ -9,9 +9,18 @@ from app.api.deps import get_current_user
 from app.db.session import get_db_session
 from app.services.activity_query import (
     effective_activity_status,
+    my_activities_past_order,
     past_activity_condition,
     upcoming_activity_condition,
 )
+from app.services.user_cache import (
+    get_cached_me_data,
+    get_cached_me_stats,
+    invalidate_user_cache,
+    set_cached_me_data,
+    set_cached_me_stats,
+)
+from app.services.chat_unread import get_chat_unread_counts, reset_chat_unread
 from app.services.city_hall import EVENT_ACTIVITY_KIND, is_city_hall_activity
 from app.models.activity import Activity
 from app.models.activity_enrollment import ActivityEnrollment
@@ -122,6 +131,10 @@ async def my_stats(
     db: AsyncSession = Depends(get_db_session),
     current_user: User = Depends(get_current_user),
 ) -> APIResponse[MyStatsData]:
+    cached_stats = await get_cached_me_stats(current_user.id)
+    if cached_stats is not None:
+        return APIResponse(data=cached_stats)
+
     organized = await db.scalar(
         select(func.count(Activity.id)).where(
             Activity.organizer_id == current_user.id,
@@ -137,17 +150,22 @@ async def my_stats(
             ActivityEnrollment.status == "joined",
         )
     )
-    return APIResponse(
-        data=MyStatsData(
-            joinedCount=int(joined or 0),
-            organizedCount=int(organized or 0),
-        )
+    stats = MyStatsData(
+        joinedCount=int(joined or 0),
+        organizedCount=int(organized or 0),
     )
+    await set_cached_me_stats(current_user.id, stats)
+    return APIResponse(data=stats)
 
 
 @router.get("")
 async def get_me(current_user: User = Depends(get_current_user)) -> APIResponse[MeData]:
-    return APIResponse(data=build_me_data(current_user))
+    cached = await get_cached_me_data(current_user.id)
+    if cached is not None:
+        return APIResponse(data=cached)
+    data = build_me_data(current_user)
+    await set_cached_me_data(current_user.id, data)
+    return APIResponse(data=data)
 
 
 @router.patch("")
@@ -209,7 +227,14 @@ async def update_me(
         current_user.onboarding_completed_at = datetime.now(UTC)
     await db.commit()
     await db.refresh(current_user)
+    await invalidate_user_cache(current_user.id)
     return APIResponse(data=build_me_data(current_user))
+
+
+def _my_activities_order(time_scope: str):
+    if time_scope == "past":
+        return [my_activities_past_order()]
+    return [Activity.start_at.desc()]
 
 
 def _my_activity_item(a: Activity, now_utc: datetime) -> MyActivitiesItem:
@@ -260,7 +285,7 @@ async def my_activities(
                 await db.execute(
                     select(Activity)
                     .where(*scope)
-                    .order_by(Activity.start_at.desc())
+                    .order_by(*_my_activities_order(timeScope))
                     .offset((page - 1) * pageSize)
                     .limit(pageSize)
                 )
@@ -290,7 +315,7 @@ async def my_activities(
                     .where(joined_filter)
                     .order_by(
                         case((Activity.activity_kind == "city_hall", 0), else_=1),
-                        Activity.start_at.desc(),
+                        *_my_activities_order(timeScope),
                     )
                     .offset((page - 1) * pageSize)
                     .limit(pageSize)
@@ -318,7 +343,7 @@ async def my_activities(
                 await db.execute(
                     select(Activity)
                     .where(*scope)
-                    .order_by(Activity.start_at.desc())
+                    .order_by(*_my_activities_order(timeScope))
                     .offset((page - 1) * pageSize)
                     .limit(pageSize)
                 )
@@ -426,22 +451,16 @@ async def my_chats(
     )
     latest_message_map = {row.activity_id: row for row in latest_rows.scalars().all()}
 
-    unread_rows = await db.execute(
-        select(ActivityMessage.activity_id, func.count(ActivityMessage.id))
-        .outerjoin(
-            UserChatRead,
-            and_(
-                UserChatRead.activity_id == ActivityMessage.activity_id,
-                UserChatRead.user_id == current_user.id,
-            ),
+    read_rows = await db.execute(
+        select(UserChatRead.activity_id, UserChatRead.last_read_message_id).where(
+            UserChatRead.user_id == current_user.id,
+            UserChatRead.activity_id.in_(activity_ids),
         )
-        .where(
-            ActivityMessage.activity_id.in_(activity_ids),
-            ActivityMessage.id > func.coalesce(UserChatRead.last_read_message_id, 0),
-        )
-        .group_by(ActivityMessage.activity_id)
     )
-    unread_map = {activity_id: count for activity_id, count in unread_rows.all()}
+    read_map = {int(aid): int(last_read or 0) for aid, last_read in read_rows.all()}
+    unread_map = await get_chat_unread_counts(
+        db, current_user.id, activities, read_map
+    )
 
     chat_items: list[MyChatItem] = []
     for activity in activities:
@@ -458,8 +477,6 @@ async def my_chats(
             last_message_at = last_msg.created_at
 
         unread_raw = int(unread_map.get(activity.id, 0))
-        if is_city_hall_activity(activity):
-            unread_raw = min(unread_raw, 99)
         chat_items.append(
             MyChatItem(
                 activityId=f"act_{activity.id}",
@@ -508,6 +525,7 @@ async def mark_chat_read(
         )
         db.add(row)
     await db.commit()
+    await reset_chat_unread(current_user.id, activity_pk)
     return APIResponse(data={"updatedCount": 1})
 
 

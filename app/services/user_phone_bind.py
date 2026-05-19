@@ -13,6 +13,7 @@ from app.core.security import hash_phone
 from app.models.user import User
 from app.services.phone_validation import parse_cn_mobile
 from app.services.user_account_merge import merge_user_into
+from app.services.user_cache import invalidate_user_cache
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +56,7 @@ async def bind_phone_to_user(
         current_user.phone = normalized
         await db.commit()
         await db.refresh(current_user)
+        await invalidate_user_cache(current_user.id)
         return current_user, False
 
     if existing and existing.id != current_user.id:
@@ -86,6 +88,8 @@ async def bind_phone_to_user(
         merged_user = await db.scalar(select(User).where(User.id == to_id))
         if not merged_user:
             raise HTTPException(status_code=500, detail="merge failed")
+        await invalidate_user_cache(from_id)
+        await invalidate_user_cache(to_id)
         return merged_user, True
 
     # 无冲突：当前用户（多为纯微信账号）写入真实手机号
@@ -101,4 +105,5 @@ async def bind_phone_to_user(
             detail="该手机号已被其他账号使用",
         ) from exc
     await db.refresh(current_user)
+    await invalidate_user_cache(current_user.id)
     return current_user, False

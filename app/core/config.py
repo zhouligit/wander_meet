@@ -45,6 +45,19 @@ class Settings(BaseSettings):
     redis_db: int = 0
     redis_password: str = ""
 
+    #: ``GET /activities`` 同城列表 Redis 短缓存（见 doc/PERF_Cache_and_Scale.md）
+    cache_activity_list_enabled: bool = True
+    cache_activity_list_ttl_seconds: int = 60
+
+    #: 鉴权用户行 Redis 缓存（``get_current_user``）
+    cache_user_auth_enabled: bool = True
+    cache_user_auth_ttl_seconds: int = 300
+    #: ``GET /me``、``GET /me/stats`` Redis 短缓存
+    cache_me_enabled: bool = True
+    cache_me_ttl_seconds: int = 30
+    #: ``GET /meta/*`` 静态接口 HTTP Cache-Control max-age（秒）；0=不设置
+    meta_http_cache_max_age_seconds: int = 3600
+
     #: 非 Mock 时短信渠道：``ihuyi``=互亿无线（默认），``aliyun``=阿里云 SendSms
     sms_provider: Annotated[Literal["ihuyi", "aliyun"], BeforeValidator(_lower_strip)] = "ihuyi"
 

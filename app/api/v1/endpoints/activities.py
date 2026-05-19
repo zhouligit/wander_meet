@@ -21,6 +21,20 @@ from app.services.activity_category import normalize_activity_category
 from app.services.city_hall import EVENT_ACTIVITY_KIND, is_city_hall_activity
 from app.services.contact_content_filter import contact_text_blocked_reason
 from app.db.session import get_db_session
+from app.services.activity_lifecycle import mark_activity_ended
+from app.services.chat_unread import increment_chat_unread_for_message
+from app.services.user_cache import invalidate_me_stats
+from app.services.response_cache import (
+    activity_list_cache_key,
+    activity_nearby_cache_key,
+    get_cached_activity_detail,
+    get_cached_activity_list,
+    get_cached_activity_nearby,
+    invalidate_activity_read_caches,
+    set_cached_activity_detail,
+    set_cached_activity_list,
+    set_cached_activity_nearby,
+)
 from app.models.activity import Activity
 from app.models.activity_enrollment import ActivityEnrollment
 from app.models.activity_message import ActivityMessage
@@ -99,6 +113,37 @@ async def list_activities(
     if categoryId:
         filters.append(Activity.category_id == categoryId)
 
+    cache_key = activity_list_cache_key(cc, dateRange, categoryId, page, pageSize)
+    cached_list = await get_cached_activity_list(cache_key)
+    if cached_list is not None:
+        cards = list(cached_list.list)
+        if optional_user and cards:
+            activity_ids = [_parse_activity_id(c.activityId) for c in cards]
+            jr = await db.execute(
+                select(ActivityEnrollment.activity_id).where(
+                    ActivityEnrollment.user_id == optional_user.id,
+                    ActivityEnrollment.activity_id.in_(activity_ids),
+                    ActivityEnrollment.status == "joined",
+                )
+            )
+            joined_ids = {int(r[0]) for r in jr.all()}
+            cards = [
+                c.model_copy(
+                    update={
+                        "enrollmentStatus": "joined" if _parse_activity_id(c.activityId) in joined_ids else None
+                    }
+                )
+                for c in cards
+            ]
+        return APIResponse(
+            data=ActivityListData(
+                list=cards,
+                total=cached_list.total,
+                page=cached_list.page,
+                pageSize=cached_list.pageSize,
+            )
+        )
+
     total_stmt = select(func.count(Activity.id)).where(*filters)
     total = (await db.execute(total_stmt)).scalar_one()
 
@@ -155,9 +200,17 @@ async def list_activities(
         for a in rows
     ]
 
-    return APIResponse(
-        data=ActivityListData(list=cards, total=total, page=page, pageSize=pageSize)
+    list_data = ActivityListData(list=cards, total=total, page=page, pageSize=pageSize)
+    await set_cached_activity_list(
+        cache_key,
+        ActivityListData(
+            list=[c.model_copy(update={"enrollmentStatus": None}) for c in cards],
+            total=total,
+            page=page,
+            pageSize=pageSize,
+        ),
     )
+    return APIResponse(data=list_data)
 
 
 @router.get("/nearby")
@@ -205,6 +258,51 @@ async def list_nearby_activities(
         base_filters.append(activity_city_code_matches(Activity.city_code, cityCode))
     if categoryId:
         base_filters.append(Activity.category_id == categoryId)
+
+    nearby_cache_key = activity_nearby_cache_key(
+        city_code=cityCode,
+        date_range=dateRange,
+        category_id=categoryId,
+        sort_by=sortBy,
+        lat=lat,
+        lng=lng,
+        radius_km=radiusKm,
+        page=page,
+        page_size=pageSize,
+    )
+    cached_nearby = await get_cached_activity_nearby(nearby_cache_key)
+    if cached_nearby is not None:
+        cards = list(cached_nearby.list)
+        if optional_user and cards:
+            activity_ids = [_parse_activity_id(c.activityId) for c in cards]
+            jr = await db.execute(
+                select(ActivityEnrollment.activity_id).where(
+                    ActivityEnrollment.user_id == optional_user.id,
+                    ActivityEnrollment.activity_id.in_(activity_ids),
+                    ActivityEnrollment.status == "joined",
+                )
+            )
+            joined_ids = {int(r[0]) for r in jr.all()}
+            cards = [
+                c.model_copy(
+                    update={
+                        "enrollmentStatus": "joined"
+                        if _parse_activity_id(c.activityId) in joined_ids
+                        else None
+                    }
+                )
+                for c in cards
+            ]
+        return APIResponse(
+            data=NearbyActivityListData(
+                list=cards,
+                total=cached_nearby.total,
+                page=cached_nearby.page,
+                pageSize=cached_nearby.pageSize,
+                searchCenter=cached_nearby.searchCenter,
+                radiusKm=cached_nearby.radiusKm,
+            )
+        )
 
     nearby_subq = (
         select(
@@ -292,31 +390,34 @@ async def list_nearby_activities(
         len(cards),
     )
 
-    return APIResponse(
-        data=NearbyActivityListData(
-            list=cards,
+    nearby_data = NearbyActivityListData(
+        list=cards,
+        total=total,
+        page=page,
+        pageSize=pageSize,
+        searchCenter=NearbySearchCenter(lat=lat, lng=lng),
+        radiusKm=radiusKm,
+    )
+    await set_cached_activity_nearby(
+        nearby_cache_key,
+        NearbyActivityListData(
+            list=[c.model_copy(update={"enrollmentStatus": None}) for c in cards],
             total=total,
             page=page,
             pageSize=pageSize,
-            searchCenter=NearbySearchCenter(lat=lat, lng=lng),
+            searchCenter=nearby_data.searchCenter,
             radiusKm=radiusKm,
-        )
+        ),
     )
+    return APIResponse(data=nearby_data)
 
 
-@router.get("/{activity_id}")
-async def get_activity_detail(
-    activity_id: str,
-    db: AsyncSession = Depends(get_db_session),
-    current_user: User = Depends(get_current_user),
-) -> APIResponse[ActivityDetailData]:
-    activity_pk = _parse_activity_id(activity_id)
-    activity = await db.scalar(select(Activity).where(Activity.id == activity_pk))
-    if not activity:
-        raise HTTPException(status_code=404, detail="Activity not found")
-
-    now_utc = datetime.now(UTC)
-
+async def _build_activity_detail_data(
+    db: AsyncSession,
+    activity: Activity,
+    current_user: User,
+    now_utc: datetime,
+) -> ActivityDetailData:
     organizer = await db.scalar(select(User).where(User.id == activity.organizer_id))
     enrolled_count = await db.scalar(
         select(func.count(ActivityEnrollment.id)).where(
@@ -331,8 +432,7 @@ async def get_activity_detail(
             ActivityEnrollment.status == "joined",
         )
     )
-
-    data = ActivityDetailData(
+    return ActivityDetailData(
         activityId=f"act_{activity.id}",
         activityKind=activity.activity_kind,
         title=activity.title,
@@ -353,6 +453,45 @@ async def get_activity_detail(
         organizer=_organizer_for_detail(organizer),
         enrolledCount=int(enrolled_count or 0),
         myEnrollment=MyEnrollment(status="joined") if my_enrollment_row else None,
+    )
+
+
+@router.get("/{activity_id}")
+async def get_activity_detail(
+    activity_id: str,
+    db: AsyncSession = Depends(get_db_session),
+    current_user: User = Depends(get_current_user),
+) -> APIResponse[ActivityDetailData]:
+    activity_pk = _parse_activity_id(activity_id)
+    now_utc = datetime.now(UTC)
+
+    cached_detail = await get_cached_activity_detail(activity_pk)
+    if cached_detail is not None:
+        my_enrollment_row = await db.scalar(
+            select(ActivityEnrollment).where(
+                ActivityEnrollment.activity_id == activity_pk,
+                ActivityEnrollment.user_id == current_user.id,
+                ActivityEnrollment.status == "joined",
+            )
+        )
+        return APIResponse(
+            data=cached_detail.model_copy(
+                update={
+                    "myEnrollment": MyEnrollment(status="joined")
+                    if my_enrollment_row
+                    else None,
+                }
+            )
+        )
+
+    activity = await db.scalar(select(Activity).where(Activity.id == activity_pk))
+    if not activity:
+        raise HTTPException(status_code=404, detail="Activity not found")
+
+    data = await _build_activity_detail_data(db, activity, current_user, now_utc)
+    await set_cached_activity_detail(
+        activity_pk,
+        data.model_copy(update={"myEnrollment": None}),
     )
     return APIResponse(data=data)
 
@@ -413,30 +552,13 @@ async def create_activity(
     )
     await db.commit()
     await db.refresh(activity)
+    await invalidate_activity_read_caches(
+        city_code=activity.city_code, activity_id=activity.id
+    )
+    await invalidate_me_stats(current_user.id)
 
     now_create = datetime.now(UTC)
-    data = ActivityDetailData(
-        activityId=f"act_{activity.id}",
-        activityKind=activity.activity_kind,
-        title=activity.title,
-        description=activity.description,
-        categoryId=activity.category_id,
-        categoryLabel=_category_label_for_api(activity),
-        startAt=activity.start_at,
-        endAt=activity.end_at,
-        cityCode=activity.city_code,
-        locationName=activity.location_name,
-        addressDetail=activity.address_detail,
-        lat=float(activity.lat),
-        lng=float(activity.lng),
-        maxMembers=activity.max_members,
-        feeType=activity.fee_type,
-        feeAmount=activity.fee_amount_cents,
-        activityStatus=effective_activity_status(activity, now_create),
-        organizer=_organizer_for_detail(current_user),
-        enrolledCount=1,
-        myEnrollment=MyEnrollment(status="joined"),
-    )
+    data = await _build_activity_detail_data(db, activity, current_user, now_create)
     logger.info(
         "create_activity user_id=%s request_id=%s activity_id=%s city=%s category=%s",
         current_user.id,
@@ -461,6 +583,10 @@ async def enroll_activity(
         raise HTTPException(status_code=404, detail="Activity not found")
 
     enrollment = await enroll_user_in_activity(db, current_user.id, activity)
+    await invalidate_activity_read_caches(
+        city_code=activity.city_code, activity_id=activity.id
+    )
+    await invalidate_me_stats(current_user.id)
 
     logger.info(
         "enroll_activity user_id=%s request_id=%s activity_id=%s enrollment_id=%s",
@@ -501,6 +627,10 @@ async def cancel_enrollment(
 
     enrollment.status = "cancelled"
     await db.commit()
+    await invalidate_activity_read_caches(
+        city_code=activity.city_code, activity_id=activity.id
+    )
+    await invalidate_me_stats(current_user.id)
     return APIResponse(data={"status": "cancelled"})
 
 
@@ -570,6 +700,9 @@ async def update_activity(
             setattr(activity, model_key, val)
     await db.commit()
     await db.refresh(activity)
+    await invalidate_activity_read_caches(
+        city_code=activity.city_code, activity_id=activity.id
+    )
 
     return await get_activity_detail(
         activity_id=f"act_{activity.id}", db=db, current_user=current_user
@@ -595,10 +728,14 @@ async def cancel_activity(
     if activity.activity_status in {"cancelled", "ended"}:
         raise HTTPException(status_code=400, detail="Activity already closed")
 
-    activity.activity_status = "cancelled"
+    mark_activity_ended(activity, status="cancelled")
     if reason:
         activity.description = f"{activity.description}\n\n[取消原因] {reason}"
     await db.commit()
+    await invalidate_activity_read_caches(
+        city_code=activity.city_code, activity_id=activity.id
+    )
+    await invalidate_me_stats(current_user.id)
     logger.info(
         "cancel_activity user_id=%s request_id=%s activity_id=%s reason=%s",
         current_user.id,
@@ -751,6 +888,10 @@ async def send_message(
     db.add(message)
     await db.commit()
     await db.refresh(message)
+
+    activity = await db.scalar(select(Activity).where(Activity.id == activity_pk))
+    if activity:
+        await increment_chat_unread_for_message(db, activity, current_user.id)
 
     return APIResponse(
         data=ChatMessageItem(

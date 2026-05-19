@@ -31,6 +31,8 @@ class Activity(Base):
     lng: Mapped[float] = mapped_column(Numeric(10, 7))
     start_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
     end_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    #: 实际结束/取消时刻（冗余，便于 ``timeScope=past`` 索引与排序；计划结束见 ``end_at``）
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     max_members: Mapped[int] = mapped_column(Integer())
     fee_type: Mapped[str] = mapped_column(String(16), default="free")
     fee_amount_cents: Mapped[int | None] = mapped_column(Integer(), nullable=True)
