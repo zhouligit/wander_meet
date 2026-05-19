@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import get_settings
 from app.models.pay_order import PayOrder
 from app.models.user import User
+from app.services.activity_query import to_utc, to_utc_optional
 from app.services.yungou_pay import (
     YunGouPayError,
     build_attach,
@@ -184,7 +185,7 @@ async def query_publish_pay_state(
     qr_id = (qr_id or "").strip()
     paid_order = await _get_paid_order(db, user_id=user_id, qr_id=qr_id, product=product)
     if paid_order:
-        return True, "paid", paid_order.paid_at
+        return True, "paid", to_utc_optional(paid_order.paid_at)
 
     now = datetime.now(UTC)
     row = await db.scalar(
@@ -200,10 +201,11 @@ async def query_publish_pay_state(
     if not row:
         return False, "not_found", None
     if row.status == "paid":
-        return True, "paid", row.paid_at
+        return True, "paid", to_utc_optional(row.paid_at)
     if row.status == "failed":
         return False, "failed", None
-    if row.expires_at <= now:
+    expires_at = to_utc(row.expires_at)
+    if expires_at <= now:
         return False, "expired", None
     return False, "pending", None
 
