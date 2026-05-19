@@ -64,6 +64,16 @@ YUNGOU_PAY_SUCCESS_CODE=1
 
 本地联调可 `YUNGOU_USE_MOCK=true`（不调 YunGouOS，返回 mock 支付链接）。
 
+### 2.5 下单签名（与官方 Java SDK 一致）
+
+**Native / 小程序下单**：`sign` 只对以下 **4 个必填字段** 计算，再追加 `type`、`attach`、`notify_url`、`code` 等：
+
+`body`、`mch_id`、`out_trade_no`、`total_fee`（按 key 字典序拼接后 `&key=支付密钥`，MD5 **大写**）。
+
+若把 `attach`、`notify_url` 等一并参与签名，YunGouOS 会返回 **「签名错误，请检查签名」**。
+
+支付密钥路径：YunGouOS 控制台 → 微信支付 → 商户管理 → **支付密钥**（不是微信商户 API 密钥）。
+
 ---
 
 ## 三、接口 1：`POST /pay/publish/qrcode`

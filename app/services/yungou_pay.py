@@ -26,8 +26,25 @@ def _md5_sign_upper(parts: list[tuple[str, str]], api_key: str) -> str:
 
 
 def yungou_request_sign(params: dict[str, Any], api_key: str) -> str:
+    """与 YunGouOS 官方 ``PaySignUtil.createSign`` 一致：仅对传入的非空参数签名。"""
     pairs = [(str(k), str(v)) for k, v in params.items() if k != "sign" and v is not None and str(v) != ""]
     return _md5_sign_upper(pairs, api_key)
+
+
+def _native_pay_sign_params(
+    *,
+    mch_id: str,
+    out_trade_no: str,
+    total_fee: str,
+    body: str,
+) -> dict[str, str]:
+    """Native 扫码：官方 SDK 仅对 4 个必填字段签名，其余字段在签名后追加。"""
+    return {
+        "mch_id": mch_id,
+        "out_trade_no": out_trade_no,
+        "total_fee": total_fee,
+        "body": body,
+    }
 
 
 def yungou_notify_sign(form: dict[str, str], api_key: str) -> str:
@@ -80,16 +97,19 @@ async def native_pay(
     if not mch_id or not api_key or not api_url:
         raise YunGouPayError("YunGouOS is not configured")
 
+    sign_base = _native_pay_sign_params(
+        mch_id=mch_id,
+        out_trade_no=out_trade_no,
+        total_fee=total_fee,
+        body=body,
+    )
     params: dict[str, Any] = {
-        "mch_id": mch_id,
-        "out_trade_no": out_trade_no,
-        "total_fee": total_fee,
-        "body": body,
+        **sign_base,
         "type": "1",
         "attach": attach,
         "notify_url": notify_url,
     }
-    params["sign"] = yungou_request_sign(params, api_key)
+    params["sign"] = yungou_request_sign(sign_base, api_key)
 
     try:
         async with httpx.AsyncClient(timeout=15.0) as client:
@@ -136,16 +156,19 @@ async def minapp_pay(
     if not mch_id or not api_key or not api_url:
         raise YunGouPayError("YunGouOS is not configured")
 
+    sign_base = _native_pay_sign_params(
+        mch_id=mch_id,
+        out_trade_no=out_trade_no,
+        total_fee=total_fee,
+        body=body,
+    )
     params: dict[str, Any] = {
-        "mch_id": mch_id,
-        "out_trade_no": out_trade_no,
-        "total_fee": total_fee,
-        "body": body,
+        **sign_base,
         "attach": attach,
         "notify_url": notify_url,
         "code": wx_code,
     }
-    params["sign"] = yungou_request_sign(params, api_key)
+    params["sign"] = yungou_request_sign(sign_base, api_key)
 
     try:
         async with httpx.AsyncClient(timeout=15.0) as client:
