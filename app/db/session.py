@@ -1,3 +1,4 @@
+import logging
 from collections.abc import AsyncGenerator
 
 from redis.asyncio import Redis
@@ -6,9 +7,11 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from app.core.config import get_settings
 
 settings = get_settings()
+logger = logging.getLogger(__name__)
 
 _kw = {
     "pool_pre_ping": True,
+    "pool_reset_on_return": "rollback",
     "echo": settings.sql_echo,
     "pool_size": settings.mysql_pool_size,
     "max_overflow": settings.mysql_max_overflow,
@@ -30,4 +33,18 @@ redis_client: Redis = Redis.from_url(settings.redis_url, decode_responses=True)
 async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
     async with SessionLocal() as session:
         yield session
+
+
+async def shutdown_db() -> None:
+    """释放连接池；systemd/uvicorn 重启时偶发「TCPTransport closed」可忽略。"""
+    try:
+        await engine.dispose()
+    except RuntimeError as exc:
+        # asyncmy 在连接已被 MySQL/内核关闭后仍尝试写 QUIT，多见于 SIGTERM 关停
+        if "TCPTransport closed" in str(exc) or "handler is closed" in str(exc):
+            logger.warning("MySQL pool dispose on shutdown (stale socket): %s", exc)
+        else:
+            raise
+    except Exception:
+        logger.exception("MySQL engine dispose failed")
 

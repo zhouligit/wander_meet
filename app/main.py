@@ -11,7 +11,7 @@ from fastapi.responses import JSONResponse
 from app.api.router import api_router
 from app.core.config import get_settings
 from app.core.logging_setup import configure_logging
-from app.db.session import engine, redis_client
+from app.db.session import redis_client, shutdown_db
 
 settings = get_settings()
 configure_logging()
@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 async def lifespan(_: FastAPI):
     yield
     await redis_client.aclose()
-    await engine.dispose()
+    await shutdown_db()
 
 
 app = FastAPI(
