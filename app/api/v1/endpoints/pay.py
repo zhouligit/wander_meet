@@ -1,4 +1,5 @@
 import logging
+from urllib.parse import parse_qsl
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import PlainTextResponse
@@ -28,6 +29,19 @@ from app.services.yungou_pay import verify_yungou_notify_sign
 
 router = APIRouter(prefix="/pay", tags=["pay"])
 logger = logging.getLogger(__name__)
+
+
+async def _parse_yungou_notify_form(request: Request) -> dict[str, str]:
+    """YunGouOS 回调为 ``application/x-www-form-urlencoded``（见 doc/pay_api.md）。"""
+    body = await request.body()
+    if not body:
+        return {}
+    ct = (request.headers.get("content-type") or "").split(";")[0].strip().lower()
+    if "multipart/form-data" in ct:
+        form = await request.form()
+        return {k: str(v) for k, v in form.items()}
+    text = body.decode("utf-8", errors="replace").lstrip("\ufeff")
+    return dict(parse_qsl(text, keep_blank_values=True))
 
 
 @router.post("/publish/qrcode")
@@ -94,8 +108,7 @@ async def pay_state(
 @router.post("/yungou/notify")
 async def pay_yungou_notify(request: Request, db: AsyncSession = Depends(get_db_session)) -> PlainTextResponse:
     """YunGouOS 支付回调；无 Bearer。验签通过后订单标为 paid。"""
-    form = dict(await request.form())
-    form_str = {k: str(v) for k, v in form.items()}
+    form_str = await _parse_yungou_notify_form(request)
     settings = get_settings()
     api_key = (settings.yungou_api_key or "").strip()
     if not api_key:
