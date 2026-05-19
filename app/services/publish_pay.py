@@ -6,7 +6,7 @@ import logging
 from datetime import UTC, datetime, timedelta
 
 from fastapi import HTTPException
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
@@ -69,7 +69,6 @@ async def create_publish_qrcode_order(
     if await _get_paid_order(db, user_id=current_user.id, qr_id=qr_id, product=product):
         raise HTTPException(status_code=409, detail="already paid")
 
-    now = datetime.now(UTC)
     pending = await db.scalar(
         select(PayOrder)
         .where(
@@ -77,7 +76,7 @@ async def create_publish_qrcode_order(
             PayOrder.qr_id == qr_id,
             PayOrder.product == product,
             PayOrder.status == "pending",
-            PayOrder.expires_at > now,
+            PayOrder.expires_at > func.utc_timestamp(),
         )
         .order_by(PayOrder.id.desc())
         .limit(1)
@@ -102,6 +101,7 @@ async def create_publish_qrcode_order(
     except YunGouPayError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
+    now = datetime.now(UTC)
     order = PayOrder(
         user_id=current_user.id,
         qr_id=qr_id,
