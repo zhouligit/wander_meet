@@ -19,8 +19,10 @@
 
 - 邮件验证码注册 / 登录
 - 邮箱与微信 / 手机号 **自动合并**（避免串号）
-- 忘记密码、修改密码（可列二期）
+- 已登录修改密码（可列后续）
 - 小程序内邮箱登录
+
+**二期（忘记密码，已实现）：** 邮件验证码重置密码，见 §3.6。
 
 **与现有能力关系：**
 
@@ -37,12 +39,14 @@
 | --- | --- |
 | 注册 | 邮箱、密码、确认密码（前端校验）、可选昵称；协议勾选 |
 | 登录 | 邮箱、密码 |
+| 忘记密码 | 邮箱 → 收验证码 → 新密码 + 确认密码 → 调重置接口（成功即登录） |
 | 个人中心 | 展示 `GET /me` 的 `emailMasked`（`emailBound=true` 时） |
 
 ### 2.2 请求与存储
 
 - **注册**：`POST /auth/email/register` → 成功即写入 token（与登录相同，**无需再调 login**）。
 - **登录**：`POST /auth/email/login`。
+- **忘记密码**：`POST /auth/email/forgot-password` → `POST /auth/email/reset-password`（响应与登录相同）。
 - **Storage**（与小程序对齐，便于复用 HTTP 客户端）：
   - `wm_access_token`
   - `wm_refresh_token`
@@ -98,8 +102,10 @@
 | --- | --- | --- |
 | POST | `/auth/email/register` | 注册并下发 token |
 | POST | `/auth/email/login` | 登录 |
+| POST | `/auth/email/forgot-password` | 发送重置验证码（防枚举，统一成功） |
+| POST | `/auth/email/reset-password` | 验证码 + 新密码，下发 token |
 
-请求 / 响应详见 **`doc/API_WanderMeet_v0.1.md` §2.2、§2.3**。
+请求 / 响应详见 **`doc/API_WanderMeet_v0.1.md` §2.2–§2.3.2**。
 
 ### 3.3 与短信 / 微信接口关系
 
@@ -116,7 +122,7 @@
 - 审计：注册 / 登录失败写应用日志（IP 在 access log / `X-Forwarded-For`）。
 - **不**在 `GET /me` 返回是否设置密码等字段。
 
-环境变量见 `.env.example` 中 `AUTH_EMAIL_*`。
+环境变量见 `.env.example` 中 `AUTH_EMAIL_*`、`EMAIL_*`、`SMTP_*`。
 
 ### 3.5 `GET /me` 扩展
 
@@ -124,6 +130,19 @@
 | --- | --- |
 | `emailMasked` | 如 `u***@example.com`；未绑定邮箱账号时为空字符串 |
 | `emailBound` | 是否邮箱密码账号 |
+
+### 3.6 忘记密码（二期）
+
+| 步骤 | 接口 | 说明 |
+| --- | --- | --- |
+| 1 | `POST /auth/email/forgot-password` | Body `{ "email" }`；返回 `expireInSeconds` |
+| 2 | `POST /auth/email/reset-password` | Body `{ "email", "code", "newPassword" }`；camelCase |
+
+- Redis：`wm:email:reset:{email}` → 6 位验证码；`wm:email:forgot:rate:{email}` 发信间隔。
+- **防枚举**：未注册邮箱也返回 200 + `expireInSeconds`，但不发信。
+- 重置成功：更新 `password_hash`、清除登录失败锁、**吊销全部 refresh**，并签发新 access/refresh。
+- 生产：`EMAIL_USE_MOCK=false`，配置 SMTP（465 SSL 或 587 STARTTLS）。
+- 开发：`EMAIL_USE_MOCK=true` 时验证码固定为 `EMAIL_MOCK_CODE`（默认 `123456`），日志可见正文。
 
 ---
 
@@ -134,12 +153,14 @@
 - [ ] 错误密码 → 401，多次后 429 锁定
 - [ ] 重复注册 → 409
 - [ ] 小程序账号与 H5 邮箱账号 **不**自动合并（各登录各的 id）
+- [ ] 忘记密码：已注册邮箱收到验证码（或 Mock 日志）；重置后可用新密码登录
+- [ ] 未注册邮箱调 forgot-password 仍 200，但无邮件
 
 ---
 
 ## 五、API 文档索引
 
-- 邮箱注册 / 登录：**`doc/API_WanderMeet_v0.1.md` §2.2、§2.3**
+- 邮箱注册 / 登录 / 忘记密码：**`doc/API_WanderMeet_v0.1.md` §2.2、§2.3、§2.3.1、§2.3.2**
 - 微信登录：§2.1
 - 绑定手机号：§4.1、§4.2
 - 运维合并账号：§36.2

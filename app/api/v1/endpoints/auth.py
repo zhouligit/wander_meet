@@ -23,13 +23,21 @@ from app.services.aliyun_sms import AliyunSmsError, send_sms_aliyun_sync
 from app.services.ihuyi_sms import IhuiSmsError, send_sms_submit_sync
 from app.services.ip_rate_limit import enforce_auth_ip_rate_limit
 from app.services.phone_validation import parse_cn_mobile
-from app.services.email_auth import authenticate_email_user, register_email_user
+from app.services.email_auth import (
+    authenticate_email_user,
+    register_email_user,
+    request_email_password_reset,
+    reset_email_password,
+)
 from app.services.wechat_miniapp import WechatLoginError, code_to_session
 from app.models.user import User
 from app.schemas.datetime_iso import datetime_to_rfc3339_utc_z
 from app.schemas.auth import (
+    EmailForgotPasswordData,
+    EmailForgotPasswordRequest,
     EmailLoginRequest,
     EmailRegisterRequest,
+    EmailResetPasswordRequest,
     LoginUser,
     LogoutData,
     RefreshTokenData,
@@ -74,6 +82,10 @@ async def _limit_email_register_ip(request: Request) -> None:
 
 async def _limit_email_login_ip(request: Request) -> None:
     await enforce_auth_ip_rate_limit(request, "email_login")
+
+
+async def _limit_email_forgot_ip(request: Request) -> None:
+    await enforce_auth_ip_rate_limit(request, "email_forgot")
 
 
 async def _build_login_response(user: User) -> SMSLoginData:
@@ -266,6 +278,33 @@ async def email_login(
 ) -> APIResponse[SMSLoginData]:
     """H5 邮箱密码登录。"""
     user = await authenticate_email_user(db, email=payload.email, password=payload.password)
+    return APIResponse(data=await _build_login_response(user))
+
+
+@router.post("/email/forgot-password", dependencies=[Depends(_limit_email_forgot_ip)])
+async def email_forgot_password(
+    payload: EmailForgotPasswordRequest, db: AsyncSession = Depends(get_db_session)
+) -> APIResponse[EmailForgotPasswordData]:
+    """
+    忘记密码：向已注册的邮箱密码账号发送 6 位验证码。
+    无论邮箱是否存在，均返回成功（防枚举）。
+    """
+    ttl = await request_email_password_reset(db, email=payload.email)
+    return APIResponse(data=EmailForgotPasswordData(expireInSeconds=ttl))
+
+
+@router.post("/email/reset-password", dependencies=[Depends(_limit_email_forgot_ip)])
+async def email_reset_password(
+    payload: EmailResetPasswordRequest, db: AsyncSession = Depends(get_db_session)
+) -> APIResponse[SMSLoginData]:
+    """校验邮件验证码并重置密码；成功签发新 token，并吊销该用户全部 refresh。"""
+    user = await reset_email_password(
+        db,
+        email=payload.email,
+        code=payload.code,
+        new_password=payload.newPassword,
+    )
+    _ensure_user_can_login(user)
     return APIResponse(data=await _build_login_response(user))
 
 

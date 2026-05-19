@@ -30,6 +30,20 @@ class EmailLoginRequest(BaseModel):
     password: str = Field(min_length=1, max_length=128)
 
 
+class EmailForgotPasswordRequest(BaseModel):
+    email: str = Field(min_length=3, max_length=254)
+
+
+class EmailForgotPasswordData(BaseModel):
+    expireInSeconds: int
+
+
+class EmailResetPasswordRequest(BaseModel):
+    email: str = Field(min_length=3, max_length=254)
+    code: str = Field(min_length=4, max_length=8)
+    newPassword: str = Field(min_length=8, max_length=128)
+
+
 class LoginUser(BaseModel):
     userId: str
     nickname: str

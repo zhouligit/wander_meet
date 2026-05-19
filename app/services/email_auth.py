@@ -1,8 +1,10 @@
-"""H5 邮箱 + 密码注册与登录。"""
+"""H5 邮箱 + 密码注册、登录与忘记密码。"""
 
 from __future__ import annotations
 
+import asyncio
 import logging
+import secrets
 
 from fastapi import HTTPException
 from sqlalchemy import or_, select
@@ -14,13 +16,17 @@ from app.core.security import hash_email
 from app.db.session import redis_client
 from app.models.user import User
 from app.services.email_validation import nickname_from_email, parse_email
+from app.services.email_send import EmailSendError, send_email_sync
 from app.services.password_policy import hash_password, validate_password, verify_password
+from app.services.auth_refresh import revoke_all_refresh_for_user
 
 logger = logging.getLogger(__name__)
 
 _FAIL_PREFIX = "wm:auth:email_fail:"
 _LOCK_PREFIX = "wm:auth:email_lock:"
 _REGISTER_RATE_PREFIX = "wm:email:register:rate:"
+_FORGOT_RATE_PREFIX = "wm:email:forgot:rate:"
+_RESET_CODE_PREFIX = "wm:email:reset:"
 
 
 def user_has_email_account(user: User) -> bool:
@@ -144,4 +150,103 @@ async def authenticate_email_user(
     if not user.email:
         user.email = normalized
         await db.commit()
+    return user
+
+
+def _generate_reset_code() -> str:
+    return str(secrets.randbelow(900000) + 100000)
+
+
+async def request_email_password_reset(db: AsyncSession, *, email: str) -> int:
+    """
+    发送重置密码验证码。无论邮箱是否存在，对调用方均视为成功（防枚举）。
+    返回验证码有效秒数。
+    """
+    settings = get_settings()
+    normalized = parse_email(email)
+    if normalized is None:
+        raise HTTPException(status_code=400, detail="邮箱格式不正确")
+
+    ttl = max(60, int(settings.auth_email_reset_code_ttl_seconds))
+    gap = max(15, int(settings.auth_email_forgot_min_interval_seconds))
+    rate_key = f"{_FORGOT_RATE_PREFIX}{normalized}"
+    acquired = await redis_client.set(rate_key, "1", ex=gap, nx=True)
+    if not acquired:
+        raise HTTPException(
+            status_code=429,
+            detail=f"发送过于频繁，请{gap}秒后再试",
+        )
+
+    user = await find_user_by_email(db, normalized)
+    if user and user_has_email_account(user):
+        if settings.email_use_mock:
+            if settings.app_env.lower() in ("prod", "production"):
+                logger.warning(
+                    "EMAIL_USE_MOCK is on in production — reset emails not sent; email_suffix=%s",
+                    normalized.split("@")[-1],
+                )
+            code = (settings.email_mock_code or "123456").strip() or "123456"
+        else:
+            code = _generate_reset_code()
+        await redis_client.set(f"{_RESET_CODE_PREFIX}{normalized}", code, ex=ttl)
+        minutes = max(1, ttl // 60)
+        body = settings.email_reset_body_template.format(code=code, minutes=minutes)
+        try:
+            await asyncio.to_thread(
+                send_email_sync,
+                to=normalized,
+                subject=settings.email_reset_subject,
+                body=body,
+            )
+        except EmailSendError as exc:
+            await redis_client.delete(f"{_RESET_CODE_PREFIX}{normalized}")
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+        logger.info("email_reset_sent user_id=%s", user.id)
+
+    return ttl
+
+
+async def reset_email_password(
+    db: AsyncSession,
+    *,
+    email: str,
+    code: str,
+    new_password: str,
+) -> User:
+    normalized = parse_email(email)
+    if normalized is None:
+        raise HTTPException(status_code=400, detail="邮箱格式不正确")
+
+    pwd_err = validate_password(new_password)
+    if pwd_err:
+        raise HTTPException(status_code=400, detail=pwd_err)
+
+    raw_code = (code or "").strip()
+    if not raw_code:
+        raise HTTPException(status_code=400, detail="验证码不能为空")
+
+    redis_key = f"{_RESET_CODE_PREFIX}{normalized}"
+    cached = await redis_client.get(redis_key)
+    if not cached or cached != raw_code:
+        raise HTTPException(status_code=400, detail="验证码错误或已过期")
+
+    user = await find_user_by_email(db, normalized)
+    if not user or not user_has_email_account(user):
+        raise HTTPException(status_code=400, detail="验证码错误或已过期")
+
+    if user.status == "banned":
+        raise HTTPException(status_code=403, detail="User is banned")
+    if user.status == "restricted":
+        raise HTTPException(status_code=403, detail="User is restricted")
+
+    user.password_hash = hash_password(new_password)
+    if not user.email:
+        user.email = normalized
+    await db.commit()
+    await db.refresh(user)
+
+    await redis_client.delete(redis_key)
+    await _clear_login_failures(normalized)
+    await revoke_all_refresh_for_user(user.id)
+    logger.info("email_password_reset user_id=%s", user.id)
     return user

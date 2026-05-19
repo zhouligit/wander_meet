@@ -45,6 +45,8 @@
 - `POST /api/v1/wm/auth/wechat/login`（小程序 `wx.login` 的 code）
 - `POST /api/v1/wm/auth/email/register`（H5 邮箱注册，见 `doc/mail_login.md`）
 - `POST /api/v1/wm/auth/email/login`（H5 邮箱登录）
+- `POST /api/v1/wm/auth/email/forgot-password`（H5 忘记密码发验证码）
+- `POST /api/v1/wm/auth/email/reset-password`（H5 重置密码并登录）
 - `POST /api/v1/wm/auth/token/refresh`
 - `POST /api/v1/wm/auth/logout`
 - `POST /api/v1/wm/pay/publish/qrcode`（发布活动扫码付，见 `doc/pay_api.md`）

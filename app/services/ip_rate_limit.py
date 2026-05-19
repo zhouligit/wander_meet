@@ -19,7 +19,7 @@ def client_ip(request: Request) -> str:
 
 async def enforce_auth_ip_rate_limit(request: Request, bucket: str) -> None:
     """
-    bucket: ``sms_send`` | ``sms_login`` | ``wechat_login`` | ``email_register`` | ``email_login``
+    bucket: ``sms_send`` | ``sms_login`` | ``wechat_login`` | ``email_register`` | ``email_login`` | ``email_forgot``
     每分钟计数；limit<=0 表示关闭。
     """
     settings = get_settings()
@@ -33,6 +33,8 @@ async def enforce_auth_ip_rate_limit(request: Request, bucket: str) -> None:
         limit = settings.auth_email_register_ip_limit_per_minute
     elif bucket == "email_login":
         limit = settings.auth_email_login_ip_limit_per_minute
+    elif bucket == "email_forgot":
+        limit = settings.auth_email_forgot_ip_limit_per_minute
     else:
         limit = 0
     if limit <= 0:

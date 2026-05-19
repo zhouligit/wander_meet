@@ -103,6 +103,28 @@ class Settings(BaseSettings):
     auth_email_login_max_failures: int = 5
     #: 登录失败锁定秒数
     auth_email_login_lock_seconds: int = 900
+    #: 忘记密码：同一 IP 每分钟最多次数（0=不限制）
+    auth_email_forgot_ip_limit_per_minute: int = 10
+    #: 同一邮箱两次「忘记密码」发信最小间隔（秒）
+    auth_email_forgot_min_interval_seconds: int = 60
+    #: 重置密码验证码有效秒数
+    auth_email_reset_code_ttl_seconds: int = 900
+
+    #: 发信：测试 true 只打日志不发邮件
+    email_use_mock: bool = True
+    #: Mock 下固定验证码（空则 123456）
+    email_mock_code: str = "123456"
+    smtp_host: str = ""
+    smtp_port: int = 465
+    smtp_user: str = ""
+    smtp_password: str = ""
+    smtp_from: str = ""
+    smtp_use_ssl: bool = True
+    smtp_starttls: bool = False
+    email_reset_subject: str = "旅聚 WanderMeet 重置密码验证码"
+    email_reset_body_template: str = (
+        "您正在重置旅聚账号密码，验证码为：{code}，{minutes} 分钟内有效。如非本人操作请忽略。"
+    )
 
     #: 微信小程序 AppID / AppSecret（``auth/wechat/login`` 调 jscode2session）
     wx_mp_appid: str = ""
