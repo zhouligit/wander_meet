@@ -18,6 +18,7 @@ from app.models.notification import Notification
 from app.models.place_activity_alert import PlaceActivityAlert
 from app.models.report import Report
 from app.models.user import User
+from app.services.email_auth import user_has_email_account
 from app.models.user_block import UserBlock
 from app.models.user_chat_read import UserChatRead
 from app.models.user_feedback import UserFeedback
@@ -238,6 +239,18 @@ async def merge_user_into(db: AsyncSession, *, from_user_id: int, to_user_id: in
     )
 
     await _merge_dm_threads(db, from_user_id=from_user_id, to_user_id=to_user_id)
+
+    if user_has_email_account(from_user):
+        from_email = (from_user.email or "").strip().lower()
+        if user_has_email_account(to_user):
+            to_email = (to_user.email or "").strip().lower()
+            if from_email and to_email and from_email != to_email:
+                raise ValueError("合并失败：两个账号绑定了不同邮箱")
+        elif from_email:
+            to_user.email = from_email
+            to_user.password_hash = from_user.password_hash
+        from_user.email = None
+        from_user.password_hash = None
 
     if from_user.mp_openid and not to_user.mp_openid:
         to_user.mp_openid = from_user.mp_openid

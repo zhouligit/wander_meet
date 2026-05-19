@@ -141,6 +141,12 @@
 - Redis：`wm:email:reset:{email}` → 6 位验证码；`wm:email:forgot:rate:{email}` 发信间隔。
 - **防枚举**：未注册邮箱也返回 200 + `expireInSeconds`，但不发信。
 - 重置成功：更新 `password_hash`、清除登录失败锁、**吊销全部 refresh**，并签发新 access/refresh。
+
+### 3.7 邮箱账号绑定手机号
+
+- 调用 `POST /me/phone/bind-sms`（`scene=bind_phone`），与微信绑手机同一套逻辑。
+- 若该手机号**已被**「微信 + 手机」或「短信」账号占用：邮箱账号**并入**该账号（`merged=true`，下发新 token），并**保留**邮箱与密码（合并后仍可用邮箱登录）。
+- 仅当当前账号与目标账号**均为不同微信 openid** 时返回 409。
 - 生产：`EMAIL_USE_MOCK=false`，配置 SMTP（465 SSL 或 587 STARTTLS）。
 - 开发：`EMAIL_USE_MOCK=true` 时验证码固定为 `EMAIL_MOCK_CODE`（默认 `123456`），日志可见正文。
 
