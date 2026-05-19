@@ -68,11 +68,17 @@ class MyActivitiesItem(BaseModel):
     startAt: datetime
     locationName: str
     categoryId: str
+    categoryLabel: str = ""
+    endAt: datetime | None = None
     activityStatus: str
 
     @field_serializer("startAt")
     def _ser_start_at(self, v: datetime) -> str:
         return datetime_to_rfc3339_utc_z(v) or ""
+
+    @field_serializer("endAt")
+    def _ser_end_at(self, v: datetime | None) -> str | None:
+        return datetime_to_rfc3339_utc_z(v) if v else None
 
 
 class MyActivitiesData(BaseModel):

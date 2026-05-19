@@ -1474,13 +1474,18 @@ Authorization: Bearer wm_at_xxx
 
 | 参数 | 位置 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- | --- |
-| role | query | string | 是 | `organized` \| `joined` |
+| role | query | string | 否 | `organized`（我发起）\| `joined`（已报名，含城市大群）\| `all`（二者合并，仅普通活动）；默认 `joined` |
+| timeScope | query | string | 否 | `all`（不限）\| `past`（已结束）\| `upcoming`（未结束）；默认 `all` |
 | page | query | number | 否 | 页码 |
 | pageSize | query | number | 否 | 每页条数 |
 
+**已结束（`timeScope=past`）判定**：`activity_status` 为 `ended` / `cancelled`，或 `published` 且 `end_at` 早于当前时间。
+
+**历史活动页**：`GET /me/activities?role=all&timeScope=past`（需登录）。
+
 ### 响应 `data`
 
-分页 + 活动卡片列表（可简化为与活动列表一致字段）。
+分页；`list[]` 含 `activityId`、`activityKind`、`title`、`startAt`、`endAt`、`locationName`、`categoryId`、`categoryLabel`、`activityStatus`（含时间推导后的有效状态）。
 
 ---
 

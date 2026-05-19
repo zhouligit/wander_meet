@@ -28,6 +28,26 @@ def not_ended_condition(now_utc: datetime) -> ColumnElement[bool]:
     return or_(Activity.end_at.is_(None), Activity.end_at >= now_utc)
 
 
+def past_activity_condition(now_utc: datetime) -> ColumnElement[bool]:
+    """已结束：库内 ended/cancelled，或 published 且 end_at 已过。"""
+    return or_(
+        Activity.activity_status.in_(("cancelled", "ended")),
+        and_(
+            Activity.activity_status == "published",
+            Activity.end_at.isnot(None),
+            Activity.end_at < now_utc,
+        ),
+    )
+
+
+def upcoming_activity_condition(now_utc: datetime) -> ColumnElement[bool]:
+    """进行中/未结束：published 且未到结束时间。"""
+    return and_(
+        Activity.activity_status == "published",
+        not_ended_condition(now_utc),
+    )
+
+
 def beijing_day_range_utc(which: str) -> tuple[datetime, datetime]:
     """Return [start, end) in UTC for calendar day in Asia/Shanghai."""
     local_today = datetime.now(TZ_BJ).date()

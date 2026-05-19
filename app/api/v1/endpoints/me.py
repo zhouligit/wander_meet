@@ -2,11 +2,16 @@ import logging
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import and_, case, func, select
+from sqlalchemy import and_, case, exists, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user
 from app.db.session import get_db_session
+from app.services.activity_query import (
+    effective_activity_status,
+    past_activity_condition,
+    upcoming_activity_condition,
+)
 from app.services.city_hall import EVENT_ACTIVITY_KIND, is_city_hall_activity
 from app.models.activity import Activity
 from app.models.activity_enrollment import ActivityEnrollment
@@ -207,31 +212,55 @@ async def update_me(
     return APIResponse(data=build_me_data(current_user))
 
 
+def _my_activity_item(a: Activity, now_utc: datetime) -> MyActivitiesItem:
+    return MyActivitiesItem(
+        activityId=f"act_{a.id}",
+        activityKind=a.activity_kind,
+        title=a.title,
+        startAt=a.start_at,
+        endAt=a.end_at,
+        locationName=a.location_name,
+        categoryId=a.category_id,
+        categoryLabel=(a.category_label or "").strip(),
+        activityStatus=effective_activity_status(a, now_utc),
+    )
+
+
 @router.get("/activities")
 async def my_activities(
-    role: str = Query(..., pattern="^(organized|joined)$"),
+    role: str = Query("joined", pattern="^(organized|joined|all)$"),
+    timeScope: str = Query("all", pattern="^(all|past|upcoming)$"),
     page: int = Query(1, ge=1),
     pageSize: int = Query(20, ge=1, le=50),
     db: AsyncSession = Depends(get_db_session),
     current_user: User = Depends(get_current_user),
 ) -> APIResponse[MyActivitiesData]:
+    """
+    我的活动列表。
+
+    - ``role``: ``joined`` 已报名 / ``organized`` 我发起 / ``all`` 二者合并（仅普通活动）
+    - ``timeScope``: ``all`` 不限 / ``past`` 已结束 / ``upcoming`` 未结束
+    """
+    now_utc = datetime.now(UTC)
+    time_filters: list = []
+    if timeScope == "past":
+        time_filters.append(past_activity_condition(now_utc))
+    elif timeScope == "upcoming":
+        time_filters.append(upcoming_activity_condition(now_utc))
+
     if role == "organized":
-        base_stmt = select(Activity).where(
+        scope = [
             Activity.organizer_id == current_user.id,
             Activity.activity_kind == EVENT_ACTIVITY_KIND,
-        )
-        total = (
-            await db.execute(
-                select(func.count(Activity.id)).where(
-                    Activity.organizer_id == current_user.id,
-                    Activity.activity_kind == EVENT_ACTIVITY_KIND,
-                )
-            )
-        ).scalar_one()
+            *time_filters,
+        ]
+        total = (await db.execute(select(func.count(Activity.id)).where(*scope))).scalar_one()
         rows = (
             (
                 await db.execute(
-                    base_stmt.order_by(Activity.start_at.desc())
+                    select(Activity)
+                    .where(*scope)
+                    .order_by(Activity.start_at.desc())
                     .offset((page - 1) * pageSize)
                     .limit(pageSize)
                 )
@@ -239,10 +268,11 @@ async def my_activities(
             .scalars()
             .all()
         )
-    else:
+    elif role == "joined":
         joined_filter = and_(
             ActivityEnrollment.user_id == current_user.id,
             ActivityEnrollment.status == "joined",
+            *time_filters,
         )
         total = (
             await db.execute(
@@ -269,20 +299,36 @@ async def my_activities(
             .scalars()
             .all()
         )
+    else:
+        enrolled_exists = exists(
+            select(1).where(
+                ActivityEnrollment.activity_id == Activity.id,
+                ActivityEnrollment.user_id == current_user.id,
+                ActivityEnrollment.status == "joined",
+            )
+        )
+        scope = [
+            Activity.activity_kind == EVENT_ACTIVITY_KIND,
+            *time_filters,
+            or_(Activity.organizer_id == current_user.id, enrolled_exists),
+        ]
+        total = (await db.execute(select(func.count(Activity.id)).where(*scope))).scalar_one()
+        rows = (
+            (
+                await db.execute(
+                    select(Activity)
+                    .where(*scope)
+                    .order_by(Activity.start_at.desc())
+                    .offset((page - 1) * pageSize)
+                    .limit(pageSize)
+                )
+            )
+            .scalars()
+            .all()
+        )
 
     data = MyActivitiesData(
-        list=[
-            MyActivitiesItem(
-                activityId=f"act_{a.id}",
-                activityKind=a.activity_kind,
-                title=a.title,
-                startAt=a.start_at,
-                locationName=a.location_name,
-                categoryId=a.category_id,
-                activityStatus=a.activity_status,
-            )
-            for a in rows
-        ],
+        list=[_my_activity_item(a, now_utc) for a in rows],
         total=total,
         page=page,
         pageSize=pageSize,
