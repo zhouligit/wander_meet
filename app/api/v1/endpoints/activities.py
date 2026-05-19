@@ -17,6 +17,7 @@ from app.services.activity_query import (
     to_utc_optional,
 )
 from app.services.activity_enroll import enroll_user_in_activity
+from app.services.activity_category import normalize_activity_category
 from app.services.city_hall import EVENT_ACTIVITY_KIND, is_city_hall_activity
 from app.services.contact_content_filter import contact_text_blocked_reason
 from app.db.session import get_db_session
@@ -46,6 +47,10 @@ from app.schemas.common import APIResponse
 
 router = APIRouter(prefix="/activities", tags=["activities"])
 logger = logging.getLogger(__name__)
+
+
+def _category_label_for_api(activity: Activity) -> str:
+    return (activity.category_label or "").strip()
 
 
 def _organizer_for_detail(org: User | None) -> ActivityDetailOrganizer:
@@ -143,6 +148,7 @@ async def list_activities(
             enrolledCount=enrollment_map.get(a.id, 0),
             maxMembers=a.max_members,
             categoryId=a.category_id,
+            categoryLabel=_category_label_for_api(a),
             activityStatus=effective_activity_status(a, now_utc),
             enrollmentStatus="joined" if a.id in joined_ids else None,
         )
@@ -268,6 +274,7 @@ async def list_nearby_activities(
             enrolledCount=enrollment_map.get(a.id, 0),
             maxMembers=a.max_members,
             categoryId=a.category_id,
+            categoryLabel=_category_label_for_api(a),
             activityStatus=effective_activity_status(a, now_utc),
             enrollmentStatus="joined" if a.id in joined_ids else None,
         )
@@ -331,6 +338,7 @@ async def get_activity_detail(
         title=activity.title,
         description=activity.description,
         categoryId=activity.category_id,
+        categoryLabel=_category_label_for_api(activity),
         startAt=activity.start_at,
         endAt=activity.end_at,
         cityCode=activity.city_code,
@@ -371,11 +379,16 @@ async def create_activity(
             detail="startAt must not be before now (5 minute tolerance)",
         )
 
+    cat_id, cat_label = normalize_activity_category(
+        payload.categoryId, payload.categoryLabel
+    )
+
     activity = Activity(
         organizer_id=current_user.id,
         title=payload.title,
         description=payload.description,
-        category_id=payload.categoryId,
+        category_id=cat_id,
+        category_label=cat_label,
         city_code=payload.cityCode,
         location_name=payload.locationName,
         address_detail=payload.addressDetail,
@@ -408,6 +421,7 @@ async def create_activity(
         title=activity.title,
         description=activity.description,
         categoryId=activity.category_id,
+        categoryLabel=_category_label_for_api(activity),
         startAt=activity.start_at,
         endAt=activity.end_at,
         cityCode=activity.city_code,
@@ -524,10 +538,18 @@ async def update_activity(
     ):
         raise HTTPException(status_code=400, detail="endAt must be after startAt")
 
+    if "categoryId" in updates or "categoryLabel" in updates:
+        new_cid = updates.get("categoryId", activity.category_id)
+        new_label = updates.get("categoryLabel", activity.category_label)
+        cat_id, cat_label = normalize_activity_category(new_cid, new_label)
+        activity.category_id = cat_id
+        activity.category_label = cat_label
+        updates.pop("categoryId", None)
+        updates.pop("categoryLabel", None)
+
     field_map = {
         "title": "title",
         "description": "description",
-        "categoryId": "category_id",
         "startAt": "start_at",
         "endAt": "end_at",
         "locationName": "location_name",

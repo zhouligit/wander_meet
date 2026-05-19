@@ -13,6 +13,7 @@ from app.schemas.meta import (
     StayKindMeta,
     TravelerRoleMeta,
 )
+from app.services.activity_category import ACTIVITY_CATEGORIES
 from app.services.place_suggestions import search_place_suggestions
 
 router = APIRouter(prefix="/meta", tags=["meta"])
@@ -31,18 +32,7 @@ async def city_groups_meta() -> APIResponse[CityGroupsMetaData]:
 
 @router.get("/activity-categories")
 async def activity_categories() -> APIResponse[CategoryData]:
-    categories = [
-        CategoryItem(categoryId="coffee", name="咖啡"),
-        CategoryItem(categoryId="citywalk", name="Citywalk"),
-        CategoryItem(categoryId="hiking", name="徒步"),
-        CategoryItem(categoryId="boardgame", name="桌游"),
-        CategoryItem(categoryId="coworking", name="联合办公·共创"),
-        CategoryItem(categoryId="indie", name="副业·独立开发"),
-        CategoryItem(categoryId="language", name="语言交换"),
-        CategoryItem(categoryId="dining", name="约饭·探店"),
-        CategoryItem(categoryId="photography", name="摄影扫街"),
-    ]
-    return APIResponse(data=CategoryData(categories=categories))
+    return APIResponse(data=CategoryData(categories=list(ACTIVITY_CATEGORIES)))
 
 
 @router.get("/onboarding")

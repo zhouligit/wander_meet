@@ -22,6 +22,8 @@ class Activity(Base):
     title: Mapped[str] = mapped_column(String(80), index=True)
     description: Mapped[str] = mapped_column(Text())
     category_id: Mapped[str] = mapped_column(String(32), index=True)
+    #: ``category_id=other`` 时的自定义主题（2～16 字）
+    category_label: Mapped[str | None] = mapped_column(String(32), nullable=True)
     city_code: Mapped[str] = mapped_column(String(16), index=True)
     location_name: Mapped[str] = mapped_column(String(128))
     address_detail: Mapped[str | None] = mapped_column(String(256), nullable=True)
