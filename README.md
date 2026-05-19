@@ -47,6 +47,10 @@
 - `POST /api/v1/wm/auth/email/login`（H5 邮箱登录）
 - `POST /api/v1/wm/auth/token/refresh`
 - `POST /api/v1/wm/auth/logout`
+- `POST /api/v1/wm/pay/publish/qrcode`（发布活动扫码付，见 `doc/pay_api.md`）
+- `POST /api/v1/wm/pay/state`
+- `POST /api/v1/wm/pay/yungou/notify`（YunGouOS 回调，无 Bearer）
+- `POST /api/v1/wm/pay/publish/minipay`（小程序内付，可选）
 - `GET /api/v1/wm/activities?cityCode=110000&page=1&pageSize=20`
 - `GET /api/v1/wm/activities/{activityId}` (requires Bearer token)
 - `POST /api/v1/wm/activities` (requires Bearer token)

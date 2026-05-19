@@ -10,6 +10,7 @@ from app.api.v1.endpoints.health import router as health_router
 from app.api.v1.endpoints.me import router as me_router
 from app.api.v1.endpoints.meta import router as meta_router
 from app.api.v1.endpoints.notifications import router as notifications_router
+from app.api.v1.endpoints.pay import router as pay_router
 from app.api.v1.endpoints.reports import router as reports_router
 from app.api.v1.endpoints.users import router as users_router
 from app.api.v1.endpoints.verification import router as verification_router
@@ -28,4 +29,5 @@ api_router.include_router(blocks_router)
 api_router.include_router(direct_chats_router)
 api_router.include_router(notifications_router)
 api_router.include_router(admin_router)
+api_router.include_router(pay_router)
 

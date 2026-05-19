@@ -16,6 +16,9 @@
 > - **§4** `GET /me` 增加 `emailMasked`、`emailBound`、`phoneBound`。  
 > - 新增 **§4.1 / §4.2** 绑定手机号（微信 / 短信）。  
 > - 协作说明见 `doc/mail_login.md`。
+>
+> **变更备忘（2026-05-19）**  
+> - 新增 **§2.4～§2.7** 发布活动付费（YunGouOS）：qrcode、state、notify、minipay。详见 `doc/pay_api.md`。
 
 统一响应外层：
 
@@ -240,6 +243,66 @@ v1 为 **密码注册**，不发邮件验证码。成功即返回 token（无需
 | 401 | 邮箱或密码错误 |
 | 403 | 用户封禁 / 限制 |
 | 429 | IP 限流或连续失败临时锁定 |
+
+---
+
+## 2.4 发布活动付费 — 扫码下单（H5）
+
+### `POST /api/v1/wm/pay/publish/qrcode`
+
+需登录。调 YunGouOS Native 支付，返回微信扫码链接。
+
+### 请求 Body
+
+| 字段 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| user_id / userId | string | 是 | 须与 token 一致 |
+| qr_id / qrId | string | 是 | 前端生成的发布会话 ID |
+| product | string | 否 | 默认 `publish` |
+
+### 响应 `data`
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| qrId | string | 同请求 |
+| outTradeNo | string | 商户订单号 |
+| payCodeUrl | string | 微信 Native 链接，用于生成二维码 |
+
+---
+
+## 2.5 发布活动付费 — 查询支付状态
+
+### `POST /api/v1/wm/pay/state`
+
+H5 / 小程序共用；建议每 3 秒轮询直至 `paid: true`。
+
+### 请求 Body
+
+同 §2.4（`user_id`、`qr_id`、`product`）。
+
+### 响应 `data`
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| paid | boolean | 是否已支付 |
+| state | string | `paid` \| `pending` \| `not_found` \| `expired` \| `failed` |
+| paidAt | string \| null | 支付成功时间（+08:00） |
+
+---
+
+## 2.6 YunGouOS 支付回调
+
+### `POST /api/v1/wm/pay/yungou/notify`
+
+**无 Bearer**。`application/x-www-form-urlencoded`。验签通过后订单 `paid`。响应纯文本 `SUCCESS` 或 `FAIL`。
+
+---
+
+## 2.7 发布活动付费 — 小程序支付（可选）
+
+### `POST /api/v1/wm/pay/publish/minipay`
+
+需登录。额外字段 `code`：`wx.login` 临时 code。响应 `paymentParams` 供 `uni.requestPayment`。
 
 ---
 

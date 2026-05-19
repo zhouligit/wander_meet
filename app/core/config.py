@@ -110,6 +110,20 @@ class Settings(BaseSettings):
     #: 本地/测试：不调微信，用 ``code`` 派生固定 openid（上线务必 false）
     wx_mp_use_mock: bool = False
 
+    #: YunGouOS 微信聚合支付（发布活动付费，见 doc/pay_api.md）
+    yungou_mch_id: str = ""
+    yungou_api_key: str = ""
+    yungou_native_api: str = "https://api.pay.yungouos.com/api/pay/wxpay/nativePay"
+    yungou_minapp_api: str = "https://api.pay.yungouos.com/api/pay/wxpay/minAppPay"
+    #: 支付结果回调完整 URL（须公网 HTTPS，如 https://域名/api/v1/wm/pay/yungou/notify）
+    yungou_notify_url: str = ""
+    yungou_use_mock: bool = False
+    pay_publish_fee_yuan: str = "1.00"
+    pay_publish_body: str = "发布活动"
+    pay_publish_product: str = "publish"
+    pay_order_ttl_seconds: int = 1800
+    yungou_pay_success_code: str = "1"
+
     @property
     def sqlalchemy_database_uri(self) -> str:
         return (
