@@ -94,6 +94,34 @@ async def pay_publish_minipay(
     )
 
 
+@router.post("/publish/sync")
+async def pay_publish_sync(
+    payload: PayProductRequest,
+    db: AsyncSession = Depends(get_db_session),
+    current_user: User = Depends(get_current_user),
+) -> APIResponse[PayStateData]:
+    """支付成功后主动查微信单并落库（不依赖异步 notify）。"""
+    _assert_user_match(payload.user_id, current_user)
+    paid, state, paid_at, pay_channel = await query_publish_pay_state(
+        db,
+        user_id=current_user.id,
+        qr_id=payload.qr_id,
+        product=payload.product,
+    )
+    logger.info(
+        "pay_publish_sync user_id=%s qr_id=%s paid=%s state=%s",
+        current_user.id,
+        payload.qr_id,
+        paid,
+        state,
+    )
+    return APIResponse(
+        data=PayStateData.from_order(
+            paid=paid, state=state, paid_at=paid_at, pay_channel=pay_channel
+        )
+    )
+
+
 @router.post("/state")
 async def pay_state(
     payload: PayProductRequest,

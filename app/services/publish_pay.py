@@ -372,6 +372,17 @@ async def query_publish_pay_state(
     if paid_order:
         return True, "paid", to_utc_optional(paid_order.paid_at), paid_order.pay_provider
 
+    # 已付款但 notify 未到时：优先向微信查单落库，再读库
+    synced = await _sync_pending_orders_for_qr(
+        db, user_id=user_id, qr_id=qr_id, product=product
+    )
+    if synced and synced.status == "paid":
+        return True, "paid", to_utc_optional(synced.paid_at), synced.pay_provider
+
+    paid_order = await _get_paid_order(db, user_id=user_id, qr_id=qr_id, product=product)
+    if paid_order:
+        return True, "paid", to_utc_optional(paid_order.paid_at), paid_order.pay_provider
+
     now = datetime.now(UTC)
     row = await db.scalar(
         select(PayOrder)
@@ -387,12 +398,6 @@ async def query_publish_pay_state(
         return False, "not_found", None, None
     if row.status == "paid":
         return True, "paid", to_utc_optional(row.paid_at), row.pay_provider
-
-    synced = await _sync_pending_orders_for_qr(
-        db, user_id=user_id, qr_id=qr_id, product=product
-    )
-    if synced and synced.status == "paid":
-        return True, "paid", to_utc_optional(synced.paid_at), synced.pay_provider
 
     if row.status == "failed":
         return False, "failed", None, row.pay_provider
@@ -514,10 +519,19 @@ async def mark_order_paid_from_wechat_notify(
         return order
 
     attach = (transaction.get("attach") or "").strip()
-    parts = attach.split(",")
-    if len(parts) >= 3 and parts[2] != settings.pay_publish_product:
-        logger.warning("wechat notify bad attach=%s", attach)
-        return None
+    if attach:
+        parts = attach.split(",")
+        expected = (settings.pay_publish_product or "publish").strip()
+        if len(parts) >= 3 and parts[2].strip() != expected:
+            logger.warning(
+                "wechat pay attach mismatch out=%s attach=%s expect_product=%s",
+                out_trade_no,
+                attach,
+                expected,
+            )
+            order.status = "failed"
+            await db.commit()
+            return order
 
     order.status = "paid"
     order.platform_order_no = (transaction.get("transaction_id") or "").strip() or None
