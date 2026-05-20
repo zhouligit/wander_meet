@@ -28,17 +28,21 @@ class PayPublishQrcodeData(BaseModel):
 class PayMinipayData(BaseModel):
     qrId: str
     outTradeNo: str
-    paymentParams: dict[str, str]
+    paymentParams: dict[str, str] | None = None
+    mockSkip: bool = False
 
 
 class PayStateData(BaseModel):
     paid: bool
     state: str
     paidAt: str | None = None
+    payChannel: str | None = None
 
     @classmethod
-    def from_order(cls, *, paid: bool, state: str, paid_at=None) -> "PayStateData":
+    def from_order(
+        cls, *, paid: bool, state: str, paid_at=None, pay_channel: str | None = None
+    ) -> "PayStateData":
         paid_at_str = None
         if paid_at is not None:
             paid_at_str = datetime_to_rfc3339_utc_z_shanghai_naive(paid_at)
-        return cls(paid=paid, state=state, paidAt=paid_at_str)
+        return cls(paid=paid, state=state, paidAt=paid_at_str, payChannel=pay_channel)

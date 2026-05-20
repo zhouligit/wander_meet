@@ -16,6 +16,8 @@ class PayOrder(Base):
     out_trade_no: Mapped[str] = mapped_column(String(64), unique=True)
     status: Mapped[str] = mapped_column(String(16), default="pending")
     channel: Mapped[str] = mapped_column(String(16), default="native")
+    #: 支付通道：wechat（官方 APIv3）| yungou（遗留，后期可下线）
+    pay_provider: Mapped[str] = mapped_column(String(16), default="wechat")
     pay_code_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
     platform_order_no: Mapped[str | None] = mapped_column(String(64), nullable=True)
     charge_id: Mapped[str | None] = mapped_column(String(64), nullable=True)

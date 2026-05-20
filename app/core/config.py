@@ -145,7 +145,18 @@ class Settings(BaseSettings):
     #: 本地/测试：不调微信，用 ``code`` 派生固定 openid（上线务必 false）
     wx_mp_use_mock: bool = False
 
-    #: YunGouOS 微信聚合支付（发布活动付费，见 doc/pay_api.md）
+    #: 支付通道：wechat（官方 APIv3，默认）| yungou（遗留备选，后期可下线）
+    pay_provider: str = "wechat"
+    #: 微信支付 APIv3（见 doc/wx_pay.md）
+    wechat_pay_mch_id: str = ""
+    wechat_pay_api_v3_key: str = ""
+    wechat_pay_cert_serial: str = ""
+    wechat_pay_private_key_path: str = ""
+    wechat_pay_private_key: str = ""
+    wechat_pay_notify_url: str = ""
+    wechat_pay_use_mock: bool = False
+
+    #: YunGouOS 微信聚合支付（遗留，PAY_PROVIDER=yungou 时使用）
     yungou_mch_id: str = ""
     yungou_api_key: str = ""
     yungou_native_api: str = "https://api.pay.yungouos.com/api/pay/wxpay/nativePay"

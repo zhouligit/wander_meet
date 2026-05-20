@@ -11,6 +11,7 @@ from typing import Any
 import httpx
 
 from app.core.config import get_settings
+from app.services.pay_common import build_attach, build_out_trade_no
 
 logger = logging.getLogger(__name__)
 
@@ -211,10 +212,3 @@ async def minapp_pay(
     return out
 
 
-def build_out_trade_no() -> str:
-    suffix = secrets.token_hex(3)
-    return f"wm_pub_{int(time.time() * 1000)}_{suffix}"
-
-
-def build_attach(user_public_id: str, qr_id: str, product: str) -> str:
-    return f"{user_public_id},{qr_id},{product}"
