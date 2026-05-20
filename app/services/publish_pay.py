@@ -20,6 +20,7 @@ from app.services.wechat_pay_v3 import (
     build_miniprogram_payment_params,
     jsapi_pay,
     native_pay,
+    query_transaction_by_out_trade_no,
 )
 from app.services.yungou_pay import YunGouPayError, minapp_pay, native_pay as yungou_native_pay
 
@@ -67,12 +68,15 @@ async def _get_paid_order(
     db: AsyncSession, *, user_id: int, qr_id: str, product: str
 ) -> PayOrder | None:
     return await db.scalar(
-        select(PayOrder).where(
+        select(PayOrder)
+        .where(
             PayOrder.user_id == user_id,
             PayOrder.qr_id == qr_id,
             PayOrder.product == product,
             PayOrder.status == "paid",
         )
+        .order_by(PayOrder.id.desc())
+        .limit(1)
     )
 
 
@@ -229,6 +233,31 @@ async def create_publish_minipay_order(
     if not notify_url and not (_use_wechat_mock() or _use_yungou_mock()):
         raise HTTPException(status_code=503, detail="pay notify URL not configured")
 
+    pending = await db.scalar(
+        select(PayOrder)
+        .where(
+            PayOrder.user_id == current_user.id,
+            PayOrder.qr_id == qr_id,
+            PayOrder.product == product,
+            PayOrder.status == "pending",
+            PayOrder.channel == "miniprogram",
+            PayOrder.expires_at > func.utc_timestamp(),
+        )
+        .order_by(PayOrder.id.desc())
+        .limit(1)
+    )
+    if pending:
+        attach = pending.attach or build_attach(
+            public_user_id(current_user.id), qr_id, product
+        )
+        payment_params = await _create_jsapi_payment(
+            out_trade_no=pending.out_trade_no,
+            attach=attach,
+            notify_url=notify_url,
+            wx_code=wx_code,
+        )
+        return pending, payment_params
+
     out_trade_no = build_out_trade_no()
     attach = build_attach(public_user_id(current_user.id), qr_id, product)
     payment_params = await _create_jsapi_payment(
@@ -256,6 +285,78 @@ async def create_publish_minipay_order(
     await db.commit()
     await db.refresh(order)
     return order, payment_params
+
+
+async def _try_sync_wechat_order_from_gateway(
+    db: AsyncSession, order: PayOrder
+) -> PayOrder | None:
+    """用户已付款但 notify 未到时，轮询时向微信查单并落库。"""
+    if (order.pay_provider or "").strip().lower() != "wechat" or _use_wechat_mock():
+        return None
+    if order.status not in ("pending", "failed"):
+        return order if order.status == "paid" else None
+
+    try:
+        txn = await query_transaction_by_out_trade_no(order.out_trade_no)
+    except WeChatPayError as exc:
+        logger.warning(
+            "wechat query order failed out=%s qr=%s: %s",
+            order.out_trade_no,
+            order.qr_id,
+            exc,
+        )
+        return None
+
+    trade_state = (txn.get("trade_state") or "").strip()
+    if trade_state != "SUCCESS":
+        logger.info(
+            "wechat query order not success out=%s qr=%s state=%s",
+            order.out_trade_no,
+            order.qr_id,
+            trade_state,
+        )
+        return None
+
+    updated = await mark_order_paid_from_wechat_notify(db, transaction=txn)
+    if updated and updated.status == "paid":
+        logger.info(
+            "wechat order synced to paid via query out=%s qr=%s",
+            order.out_trade_no,
+            order.qr_id,
+        )
+        return updated
+    if updated and updated.status == "failed":
+        logger.warning(
+            "wechat query SUCCESS but mark failed out=%s qr=%s money=%s",
+            order.out_trade_no,
+            order.qr_id,
+            order.money,
+        )
+    return updated
+
+
+async def _sync_pending_orders_for_qr(
+    db: AsyncSession, *, user_id: int, qr_id: str, product: str
+) -> PayOrder | None:
+    """同一 qr_id 下若有多条 pending，逐条向微信查单（用户可能付的是较早那笔）。"""
+    rows = (
+        await db.scalars(
+            select(PayOrder)
+            .where(
+                PayOrder.user_id == user_id,
+                PayOrder.qr_id == qr_id,
+                PayOrder.product == product,
+                PayOrder.status.in_(("pending", "failed")),
+            )
+            .order_by(PayOrder.id.desc())
+            .limit(5)
+        )
+    ).all()
+    for order in rows:
+        synced = await _try_sync_wechat_order_from_gateway(db, order)
+        if synced and synced.status == "paid":
+            return synced
+    return None
 
 
 async def query_publish_pay_state(
@@ -286,6 +387,13 @@ async def query_publish_pay_state(
         return False, "not_found", None, None
     if row.status == "paid":
         return True, "paid", to_utc_optional(row.paid_at), row.pay_provider
+
+    synced = await _sync_pending_orders_for_qr(
+        db, user_id=user_id, qr_id=qr_id, product=product
+    )
+    if synced and synced.status == "paid":
+        return True, "paid", to_utc_optional(synced.paid_at), synced.pay_provider
+
     if row.status == "failed":
         return False, "failed", None, row.pay_provider
     expires_at = to_utc(row.expires_at)

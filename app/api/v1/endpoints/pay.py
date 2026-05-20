@@ -107,6 +107,14 @@ async def pay_state(
         qr_id=payload.qr_id,
         product=payload.product,
     )
+    logger.info(
+        "pay_state user_id=%s qr_id=%s paid=%s state=%s channel=%s",
+        current_user.id,
+        payload.qr_id,
+        paid,
+        state,
+        pay_channel,
+    )
     return APIResponse(
         data=PayStateData.from_order(
             paid=paid, state=state, paid_at=paid_at, pay_channel=pay_channel

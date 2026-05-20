@@ -24,6 +24,13 @@ _API_BASE = "https://api.mch.weixin.qq.com"
 _NATIVE_PATH = "/v3/pay/transactions/native"
 _JSAPI_PATH = "/v3/pay/transactions/jsapi"
 
+
+def _out_trade_no_query_path(out_trade_no: str) -> str:
+    mch_id = (get_settings().wechat_pay_mch_id or "").strip()
+    if not mch_id:
+        raise WeChatPayError("WeChat Pay mch_id not configured")
+    return f"/v3/pay/transactions/out-trade-no/{out_trade_no.strip()}?mchid={mch_id}"
+
 _platform_certs: dict[str, Any] = {}
 
 
@@ -149,6 +156,19 @@ async def native_pay(
     if not code_url:
         raise WeChatPayError("WeChat Pay Native missing code_url")
     return code_url
+
+
+async def query_transaction_by_out_trade_no(out_trade_no: str) -> dict[str, Any]:
+    """按商户订单号查询微信支付单（回调未到时的补偿查单）。"""
+    settings = get_settings()
+    if settings.wechat_pay_use_mock:
+        return {
+            "out_trade_no": out_trade_no,
+            "trade_state": "NOTPAY",
+        }
+
+    url_path = _out_trade_no_query_path(out_trade_no)
+    return await _request_v3("GET", url_path)
 
 
 async def jsapi_pay(
