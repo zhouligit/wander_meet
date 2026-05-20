@@ -56,11 +56,13 @@ async def pay_publish_qrcode(
         qr_id=payload.qr_id,
         product=payload.product,
     )
+    settings = get_settings()
     return APIResponse(
         data=PayPublishQrcodeData(
             qrId=order.qr_id,
             outTradeNo=order.out_trade_no,
             payCodeUrl=order.pay_code_url or "",
+            feeYuan=settings.pay_publish_fee_yuan,
         )
     )
 
@@ -87,6 +89,7 @@ async def pay_publish_minipay(
             outTradeNo=order.out_trade_no,
             paymentParams=None if mock_skip else payment_params,
             mockSkip=mock_skip,
+            feeYuan=settings.pay_publish_fee_yuan,
         )
     )
 

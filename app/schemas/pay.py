@@ -23,6 +23,7 @@ class PayPublishQrcodeData(BaseModel):
     qrId: str
     outTradeNo: str
     payCodeUrl: str
+    feeYuan: str
 
 
 class PayMinipayData(BaseModel):
@@ -30,6 +31,7 @@ class PayMinipayData(BaseModel):
     outTradeNo: str
     paymentParams: dict[str, str] | None = None
     mockSkip: bool = False
+    feeYuan: str
 
 
 class PayStateData(BaseModel):

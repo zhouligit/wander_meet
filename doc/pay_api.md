@@ -41,7 +41,7 @@ Content-Type: application/json
 | 项 | 值 |
 |----|-----|
 | product | `publish` |
-| 金额 | `1.00` 元（`PAY_PUBLISH_FEE_YUAN`） |
+| 金额 | 默认 `0.10` 元测试（`PAY_PUBLISH_FEE_YUAN`，上线前可改回 `1.00`） |
 | 商品描述 | `发布活动` |
 | 订单有效期 | 30 分钟（`PAY_ORDER_TTL_SECONDS`） |
 | attach 格式 | `{userId},{qr_id},publish` |
@@ -55,7 +55,7 @@ YUNGOU_NATIVE_API=https://api.pay.yungouos.com/api/pay/wxpay/nativePay
 YUNGOU_MINAPP_API=https://api.pay.yungouos.com/api/pay/wxpay/minAppPay
 YUNGOU_NOTIFY_URL=https://www.wang-hao-hao.cn/api/v1/wm/pay/yungou/notify
 YUNGOU_USE_MOCK=false
-PAY_PUBLISH_FEE_YUAN=1.00
+PAY_PUBLISH_FEE_YUAN=0.10
 PAY_PUBLISH_BODY=发布活动
 PAY_PUBLISH_PRODUCT=publish
 PAY_ORDER_TTL_SECONDS=1800
