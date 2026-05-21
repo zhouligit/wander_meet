@@ -415,7 +415,7 @@ async def list_nearby_activities(
 async def _build_activity_detail_data(
     db: AsyncSession,
     activity: Activity,
-    current_user: User,
+    current_user: User | None,
     now_utc: datetime,
 ) -> ActivityDetailData:
     organizer = await db.scalar(select(User).where(User.id == activity.organizer_id))
@@ -425,13 +425,15 @@ async def _build_activity_detail_data(
             ActivityEnrollment.status == "joined",
         )
     )
-    my_enrollment_row = await db.scalar(
-        select(ActivityEnrollment).where(
-            ActivityEnrollment.activity_id == activity.id,
-            ActivityEnrollment.user_id == current_user.id,
-            ActivityEnrollment.status == "joined",
+    my_enrollment_row = None
+    if current_user is not None:
+        my_enrollment_row = await db.scalar(
+            select(ActivityEnrollment).where(
+                ActivityEnrollment.activity_id == activity.id,
+                ActivityEnrollment.user_id == current_user.id,
+                ActivityEnrollment.status == "joined",
+            )
         )
-    )
     return ActivityDetailData(
         activityId=f"act_{activity.id}",
         activityKind=activity.activity_kind,
@@ -458,37 +460,40 @@ async def _build_activity_detail_data(
 
 @router.get("/{activity_id}")
 async def get_activity_detail(
+    request: Request,
     activity_id: str,
     db: AsyncSession = Depends(get_db_session),
-    current_user: User = Depends(get_current_user),
+    optional_user: User | None = Depends(get_optional_user),
 ) -> APIResponse[ActivityDetailData]:
+    """活动详情：未登录可浏览（与列表一致）；``myEnrollment`` 仅登录且有报名时返回。"""
+    if optional_user:
+        request.state.user_id = optional_user.id
+
     activity_pk = _parse_activity_id(activity_id)
     now_utc = datetime.now(UTC)
 
     cached_detail = await get_cached_activity_detail(activity_pk)
     if cached_detail is not None:
-        my_enrollment_row = await db.scalar(
-            select(ActivityEnrollment).where(
-                ActivityEnrollment.activity_id == activity_pk,
-                ActivityEnrollment.user_id == current_user.id,
-                ActivityEnrollment.status == "joined",
+        my_enrollment = None
+        if optional_user:
+            my_enrollment_row = await db.scalar(
+                select(ActivityEnrollment).where(
+                    ActivityEnrollment.activity_id == activity_pk,
+                    ActivityEnrollment.user_id == optional_user.id,
+                    ActivityEnrollment.status == "joined",
+                )
             )
-        )
+            if my_enrollment_row:
+                my_enrollment = MyEnrollment(status="joined")
         return APIResponse(
-            data=cached_detail.model_copy(
-                update={
-                    "myEnrollment": MyEnrollment(status="joined")
-                    if my_enrollment_row
-                    else None,
-                }
-            )
+            data=cached_detail.model_copy(update={"myEnrollment": my_enrollment})
         )
 
     activity = await db.scalar(select(Activity).where(Activity.id == activity_pk))
     if not activity:
         raise HTTPException(status_code=404, detail="Activity not found")
 
-    data = await _build_activity_detail_data(db, activity, current_user, now_utc)
+    data = await _build_activity_detail_data(db, activity, optional_user, now_utc)
     await set_cached_activity_detail(
         activity_pk,
         data.model_copy(update={"myEnrollment": None}),
@@ -644,6 +649,7 @@ def _parse_activity_id(activity_id: str) -> int:
 
 @router.patch("/{activity_id}")
 async def update_activity(
+    request: Request,
     activity_id: str,
     payload: UpdateActivityRequest,
     db: AsyncSession = Depends(get_db_session),
@@ -705,7 +711,10 @@ async def update_activity(
     )
 
     return await get_activity_detail(
-        activity_id=f"act_{activity.id}", db=db, current_user=current_user
+        request=request,
+        activity_id=f"act_{activity.id}",
+        db=db,
+        optional_user=current_user,
     )
 
 

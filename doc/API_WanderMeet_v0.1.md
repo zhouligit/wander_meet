@@ -889,6 +889,8 @@ Authorization: Bearer wm_at_xxx
 
 ### `GET /api/v1/wm/activities/:activityId`
 
+**鉴权**：未登录可访问（与列表一致）；若携带有效 Bearer，响应含 ``myEnrollment``。
+
 ### 路径参数
 
 | 参数 | 类型 | 说明 |
