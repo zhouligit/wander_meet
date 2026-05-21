@@ -1209,9 +1209,16 @@ Authorization: Bearer wm_at_xxx
 
 | 参数 | 位置 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- | --- |
-| cursor | query | string | 否 | 上一页最后一条 messageId 或时间游标 |
-| limit | query | number | 否 | 默认 20 |
-| direction | query | string | 否 | `older`（默认，向上翻） \| `newer` |
+| limit | query | number | 否 | 默认 20，最大 50 |
+| afterMessageId | query | string | 否 | 仅返回该 `messageId` **之后**的新消息（轮询增量）；与 `cursor` 同时传时以本参数为准 |
+| cursor | query | string | 否 | 返回该 `messageId` **之前**的更旧消息（上拉历史） |
+| direction | query | string | 否 | 保留字段，当前未使用 |
+
+**行为说明**
+
+- 无 `afterMessageId` / `cursor`：返回最近 `limit` 条，**时间正序**。
+- `afterMessageId=msg_123`：返回 `id > 123` 的消息，升序，最多 `limit` 条。
+- `cursor=msg_456`：返回 `id < 456` 的消息，升序，最多 `limit` 条。
 
 ### 响应 `data`
 

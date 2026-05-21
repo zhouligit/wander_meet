@@ -825,27 +825,48 @@ async def activity_members(
 async def get_messages(
     activity_id: str,
     cursor: str | None = Query(None),
+    after: str | None = Query(None, alias="afterMessageId"),
     limit: int = Query(20, ge=1, le=50),
     direction: str = Query("older"),
     db: AsyncSession = Depends(get_db_session),
     current_user: User = Depends(get_current_user),
 ) -> APIResponse[ChatMessagesData]:
+    """活动群聊消息。
+
+    - 默认（无 ``cursor`` / ``after``）：最近 ``limit`` 条，时间正序返回。
+    - ``afterMessageId``：仅返回该消息 id **之后**的新消息（轮询增量）。
+    - ``cursor``：返回该 id **之前**的更旧消息（上拉历史，与 ``after`` 互斥时 ``after`` 优先）。
+    """
     activity_pk = _parse_activity_id(activity_id)
     await _assert_member_or_organizer(activity_pk, current_user.id, db)
     _ = direction
 
-    stmt = (
+    base = (
         select(ActivityMessage, User)
         .join(User, User.id == ActivityMessage.sender_id)
         .where(ActivityMessage.activity_id == activity_pk)
     )
-    if cursor:
-        cursor_id = _parse_message_cursor(cursor)
-        stmt = stmt.where(ActivityMessage.id < cursor_id)
-    stmt = stmt.order_by(ActivityMessage.id.desc()).limit(limit)
-    rows = (await db.execute(stmt)).all()
 
-    rows = list(reversed(rows))
+    if after:
+        after_id = _parse_message_cursor(after)
+        stmt = (
+            base.where(ActivityMessage.id > after_id)
+            .order_by(ActivityMessage.id.asc())
+            .limit(limit)
+        )
+        rows = (await db.execute(stmt)).all()
+    elif cursor:
+        cursor_id = _parse_message_cursor(cursor)
+        stmt = (
+            base.where(ActivityMessage.id < cursor_id)
+            .order_by(ActivityMessage.id.desc())
+            .limit(limit)
+        )
+        rows = list(reversed((await db.execute(stmt)).all()))
+    else:
+        stmt = base.order_by(ActivityMessage.id.desc()).limit(limit)
+        rows = list(reversed((await db.execute(stmt)).all()))
+
     items = [
         ChatMessageItem(
             messageId=f"msg_{msg.id}",
@@ -862,7 +883,7 @@ async def get_messages(
         )
         for msg, user in rows
     ]
-    next_cursor = f"msg_{rows[0][0].id}" if rows else None
+    next_cursor = f"msg_{rows[-1][0].id}" if rows else None
     return APIResponse(data=ChatMessagesData(list=items, nextCursor=next_cursor))
 
 
