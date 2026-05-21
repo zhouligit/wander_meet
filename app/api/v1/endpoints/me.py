@@ -3,6 +3,7 @@ from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import and_, case, exists, func, or_, select
+from sqlalchemy.exc import OperationalError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user
@@ -232,12 +233,26 @@ async def update_me(
         user.onboarding_completed_at = datetime.now(UTC)
     try:
         await db.commit()
-        await db.refresh(user)
-        await invalidate_user_cache(user.id)
-    except Exception as exc:
+    except OperationalError as exc:
         await db.rollback()
-        logger.exception("update_me failed user_id=%s", user.id)
+        logger.exception("update_me db error user_id=%s", user.id)
+        err = str(getattr(exc, "orig", exc)).lower()
+        if "unknown column" in err or "bio" in err:
+            raise HTTPException(
+                status_code=500,
+                detail="数据库未迁移完整，请在服务器执行 alembic upgrade head",
+            ) from exc
         raise HTTPException(status_code=500, detail="更新资料失败") from exc
+    except SQLAlchemyError as exc:
+        await db.rollback()
+        logger.exception("update_me db error user_id=%s", user.id)
+        raise HTTPException(status_code=500, detail="更新资料失败") from exc
+
+    try:
+        await invalidate_user_cache(user.id)
+    except Exception:
+        logger.warning("invalidate_user_cache failed user_id=%s", user.id, exc_info=True)
+
     return APIResponse(data=build_me_data(user))
 
 
