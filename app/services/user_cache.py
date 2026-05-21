@@ -127,6 +127,14 @@ async def load_user_for_auth(db: AsyncSession, user_id: int) -> User | None:
     return user
 
 
+async def load_user_for_update(db: AsyncSession, user_id: int) -> User | None:
+    """写操作专用：始终从 DB 加载并绑定当前 session。
+
+    勿对 ``load_user_for_auth`` 返回的缓存副本做 ``commit`` / ``refresh``。
+    """
+    return await db.get(User, user_id)
+
+
 async def invalidate_user_cache(user_id: int) -> None:
     await redis_client.delete(
         f"{USER_AUTH_PREFIX}{user_id}",

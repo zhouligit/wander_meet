@@ -17,6 +17,7 @@ from app.services.user_cache import (
     get_cached_me_data,
     get_cached_me_stats,
     invalidate_user_cache,
+    load_user_for_update,
     set_cached_me_data,
     set_cached_me_stats,
 )
@@ -174,61 +175,70 @@ async def update_me(
     db: AsyncSession = Depends(get_db_session),
     current_user: User = Depends(get_current_user),
 ) -> APIResponse[MeData]:
+    user = await load_user_for_update(db, current_user.id)
+    if user is None:
+        raise HTTPException(status_code=404, detail="User not found")
+
     if payload.nickname is not None:
         nn = (payload.nickname or "").strip()
         if not nn:
             raise HTTPException(status_code=400, detail="nickname is required when provided")
-        current_user.nickname = nn[:32]
+        user.nickname = nn[:32]
     if payload.avatarUrl is not None:
-        current_user.avatar_url = payload.avatarUrl
+        user.avatar_url = payload.avatarUrl
     if payload.bio is not None:
         b = (payload.bio or "").strip()
-        current_user.bio = b[:2000] if b else None
+        user.bio = b[:2000] if b else None
     if payload.tags is not None:
-        current_user.tags = list(payload.tags)[:20]
+        user.tags = list(payload.tags)[:20]
     if payload.gender is not None:
-        if current_user.gender is not None:
-            if payload.gender != current_user.gender:
+        if user.gender is not None:
+            if payload.gender != user.gender:
                 raise HTTPException(status_code=400, detail="性别提交后不可修改")
         else:
-            current_user.gender = payload.gender
+            user.gender = payload.gender
     if payload.countryCode is not None:
         cc = (payload.countryCode or "").strip().upper()
-        current_user.country_code = cc[:8] if cc else None
+        user.country_code = cc[:8] if cc else None
     if payload.travelerRoles is not None:
         roles: list[str] = []
         for x in payload.travelerRoles[:_TRAVELER_ROLE_MAX]:
             if isinstance(x, str) and x.strip():
                 roles.append(x.strip()[:48])
-        current_user.traveler_roles = roles[:_TRAVELER_ROLE_MAX] if roles else None
+        user.traveler_roles = roles[:_TRAVELER_ROLE_MAX] if roles else None
     if payload.currentPlace is not None:
         cp = (payload.currentPlace or "").strip()
-        current_user.current_place = cp[:256] if cp else None
+        user.current_place = cp[:256] if cp else None
     if payload.stayKind is not None:
         sk = (payload.stayKind or "").strip()
         if sk and sk not in _STAY_KINDS:
             raise HTTPException(status_code=400, detail="stayKind is invalid")
-        current_user.stay_kind = sk if sk else None
+        user.stay_kind = sk if sk else None
     if payload.stayEndAt is not None:
         if not str(payload.stayEndAt).strip():
-            current_user.stay_end_at = None
+            user.stay_end_at = None
         else:
-            current_user.stay_end_at = _parse_iso_datetime(payload.stayEndAt)
+            user.stay_end_at = _parse_iso_datetime(payload.stayEndAt)
     if payload.acquisitionSource is not None:
         ac = (payload.acquisitionSource or "").strip()
-        current_user.acquisition_source = ac[:64] if ac else None
+        user.acquisition_source = ac[:64] if ac else None
     if payload.notifyPrefs is not None:
         if not isinstance(payload.notifyPrefs, dict):
             raise HTTPException(status_code=400, detail="notifyPrefs must be an object")
-        current_user.notify_prefs = dict(payload.notifyPrefs)
+        user.notify_prefs = dict(payload.notifyPrefs)
     if payload.showDistance is not None:
-        current_user.show_distance = bool(payload.showDistance)
+        user.show_distance = bool(payload.showDistance)
     if payload.completeOnboarding is True:
-        current_user.onboarding_completed_at = datetime.now(UTC)
-    await db.commit()
-    await db.refresh(current_user)
-    await invalidate_user_cache(current_user.id)
-    return APIResponse(data=build_me_data(current_user))
+        user.onboarding_completed_at = datetime.now(UTC)
+    try:
+        await db.commit()
+        await db.refresh(user)
+        await invalidate_user_cache(user.id)
+    except Exception as exc:
+        await db.rollback()
+        logger.exception("update_me failed user_id=%s", user.id)
+        raise HTTPException(status_code=500, detail="更新资料失败") from exc
+    return APIResponse(data=build_me_data(user))
 
 
 def _my_activities_order(time_scope: str):

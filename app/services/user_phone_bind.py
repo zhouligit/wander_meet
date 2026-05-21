@@ -13,7 +13,7 @@ from app.core.security import hash_phone
 from app.models.user import User
 from app.services.phone_validation import parse_cn_mobile
 from app.services.user_account_merge import merge_user_into
-from app.services.user_cache import invalidate_user_cache
+from app.services.user_cache import invalidate_user_cache, load_user_for_update
 
 logger = logging.getLogger(__name__)
 
@@ -49,15 +49,19 @@ async def bind_phone_to_user(
     if user_has_phone(current_user) and current_user.phone == normalized:
         return current_user, False
 
+    user = await load_user_for_update(db, current_user.id)
+    if user is None:
+        raise HTTPException(status_code=404, detail="User not found")
+
     target_hash = hash_phone(normalized)
     existing = await db.scalar(select(User).where(User.phone_hash == target_hash))
 
-    if existing and existing.id == current_user.id:
-        current_user.phone = normalized
+    if existing and existing.id == user.id:
+        user.phone = normalized
         await db.commit()
-        await db.refresh(current_user)
-        await invalidate_user_cache(current_user.id)
-        return current_user, False
+        await db.refresh(user)
+        await invalidate_user_cache(user.id)
+        return user, False
 
     if existing and existing.id != current_user.id:
         cur_oid = (current_user.mp_openid or "").strip()
@@ -93,17 +97,17 @@ async def bind_phone_to_user(
         return merged_user, True
 
     # 无冲突：当前用户（多为纯微信账号）写入真实手机号
-    current_user.phone = normalized
-    current_user.phone_hash = target_hash
+    user.phone = normalized
+    user.phone_hash = target_hash
     try:
         await db.commit()
     except IntegrityError as exc:
         await db.rollback()
-        logger.exception("bind_phone phone_hash conflict user_id=%s", current_user.id)
+        logger.exception("bind_phone phone_hash conflict user_id=%s", user.id)
         raise HTTPException(
             status_code=409,
             detail="该手机号已被其他账号使用",
         ) from exc
-    await db.refresh(current_user)
-    await invalidate_user_cache(current_user.id)
-    return current_user, False
+    await db.refresh(user)
+    await invalidate_user_cache(user.id)
+    return user, False
