@@ -100,14 +100,23 @@ async def _fetch_access_token(appid: str, secret: str) -> tuple[str, int]:
     return token, expires_in
 
 
-async def get_mp_access_token() -> str:
+async def invalidate_mp_access_token() -> None:
+    """清除缓存的 ``access_token``（微信返回 40001/42001 时重试换号用）。"""
+    try:
+        await redis_client.delete(_ACCESS_TOKEN_REDIS_KEY)
+    except Exception:
+        logger.warning("failed to delete wx mp access_token cache key", exc_info=True)
+
+
+async def get_mp_access_token(*, force_refresh: bool = False) -> str:
     settings = get_settings()
     if settings.wx_mp_use_mock:
         return "mock_mp_access_token"
 
-    cached = await redis_client.get(_ACCESS_TOKEN_REDIS_KEY)
-    if cached:
-        return cached
+    if not force_refresh:
+        cached = await redis_client.get(_ACCESS_TOKEN_REDIS_KEY)
+        if cached:
+            return cached
 
     appid = (settings.wx_mp_appid or "").strip()
     secret = (settings.wx_mp_appsecret or "").strip()
@@ -118,6 +127,10 @@ async def get_mp_access_token() -> str:
     ttl = max(60, expires_in - 120)
     await redis_client.set(_ACCESS_TOKEN_REDIS_KEY, token, ex=ttl)
     return token
+
+
+# 微信 access_token 失效时需换新 token 再调一次手机号接口
+_MP_TOKEN_INVALID_ERRCODES = frozenset({40001, 40014, 42001})
 
 
 def mock_phone_from_code(code: str) -> str:
@@ -136,23 +149,35 @@ async def get_phone_number_from_code(phone_code: str) -> str:
     if settings.wx_mp_use_mock:
         return mock_phone_from_code(raw)
 
-    access_token = await get_mp_access_token()
-    try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            resp = await client.post(
-                f"{_PHONE_URL}?access_token={access_token}",
-                json={"code": raw},
-            )
-            resp.raise_for_status()
-            data = resp.json()
-    except httpx.HTTPError as exc:
-        logger.exception("getuserphonenumber HTTP failed")
-        raise WechatLoginError("WeChat phone service unavailable") from exc
+    data: dict = {}
+    for attempt in range(2):
+        access_token = await get_mp_access_token(force_refresh=attempt > 0)
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                resp = await client.post(
+                    f"{_PHONE_URL}?access_token={access_token}",
+                    json={"code": raw},
+                )
+                resp.raise_for_status()
+                data = resp.json()
+        except httpx.HTTPError as exc:
+            logger.exception("getuserphonenumber HTTP failed")
+            raise WechatLoginError("WeChat phone service unavailable") from exc
 
-    errcode = data.get("errcode", 0)
-    if errcode:
-        logger.warning("getuserphonenumber errcode=%s errmsg=%s", errcode, data.get("errmsg"))
-        raise WechatLoginError("Invalid or expired WeChat phone code")
+        errcode = int(data.get("errcode") or 0)
+        if errcode in _MP_TOKEN_INVALID_ERRCODES and attempt == 0:
+            logger.warning(
+                "getuserphonenumber token invalid errcode=%s, refreshing access_token",
+                errcode,
+            )
+            await invalidate_mp_access_token()
+            continue
+        if errcode:
+            logger.warning("getuserphonenumber errcode=%s errmsg=%s", errcode, data.get("errmsg"))
+            if errcode == 40029:
+                raise WechatLoginError("微信手机号凭证已失效，请重新点击授权")
+            raise WechatLoginError("Invalid or expired WeChat phone code")
+        break
 
     info = data.get("phone_info") or {}
     if isinstance(info, str):
