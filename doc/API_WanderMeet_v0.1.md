@@ -808,8 +808,8 @@ Authorization: Bearer wm_at_xxx
 | dateRange | query | string | 否 | `today` \| `tomorrow` \| `all` |
 | categoryId | query | string | 否 | 筛选类目 |
 | maxDistanceKm | query | number | 否 | 需要用户 lat/lng 时与距离联合使用 |
-| lat | query | number | 否 | 用户纬度，算距离 |
-| lng | query | number | 否 | 用户经度 |
+| lat | query | number | 否 | 用户纬度，算距离（首页搜地点后为 **搜索锚点** 坐标，非仅 GPS） |
+| lng | query | number | 否 | 用户经度（同上） |
 | page | query | number | 否 | 页码 |
 | pageSize | query | number | 否 | 每页条数 |
 
