@@ -46,6 +46,8 @@ class StayKindMeta(BaseModel):
 
 
 class OnboardingMetaData(BaseModel):
+    #: ``true`` 时登录后进入多步 ``onboarding`` 页；``false`` 时仅极简昵称+性别
+    fullOnboardingEnabled: bool = False
     acquisitionSources: list[MetaLabelItem]
     countryCodes: list[MetaLabelItem]
     travelerRoles: list[TravelerRoleMeta]

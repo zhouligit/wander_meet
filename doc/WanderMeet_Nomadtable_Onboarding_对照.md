@@ -63,14 +63,17 @@
 
 ---
 
-## 3. 当前小程序实际路径（未拆分版）
+## 3. 当前小程序实际路径（2026-05-20）
 
-1. `login.vue`：短信登录。  
-2. 若缺性别 → `profile-edit?first=1`。  
-3. `profile-edit.vue`：**单页** 含性别 + 昵称 + 简介；头像字母；**不写 tags**。  
-4. 保存 → 首页。
+1. `login.vue`：短信 / 微信登录。  
+2. **默认**：`onboardingCompletedAt` 为空或缺性别 → `profile-edit?first=1`（**仅昵称 + 性别**，保存时 `completeOnboarding: true`）。  
+3. **可选（服务端 `ONBOARDING_FULL_ENABLED=true`）**：未完成引导 → `pages/onboarding/onboarding`（约 13 步，代码保留）。  
+4. 已完成极简引导 → 首页（或 `postLoginRedirect`）。  
+5. 国家、兴趣、渠道等 → **「我的 → 编辑资料」** 自愿填写（编辑页字段逐步扩展）。
 
-与第 1 节「全量拆分」对照：**现有实现 = 登录 + 一页资料**，其余 N02～N26 均未按独立页实现。
+产品与开关说明见 **`doc/WanderMeet_新手引导_产品与进度.md`**。
+
+与第 1 节「全量拆分」对照：**线上默认 = 登录 + 极简一页**；完整 N02～N26 多步引导**暂不启用**，清单仍供日后恢复排期。
 
 ---
 

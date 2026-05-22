@@ -49,9 +49,15 @@ async def publish_meta(response: Response) -> APIResponse[PublishMetaData]:
 
 @router.get("/onboarding")
 async def onboarding_meta(response: Response) -> APIResponse[OnboardingMetaData]:
-    """新手引导可选文案：渠道、旅行身份、兴趣词表、停留类型（无需登录）。"""
+    """新手引导词表 + 是否启用完整多步引导（``ONBOARDING_FULL_ENABLED``）。"""
     _apply_meta_http_cache(response)
-    return APIResponse(data=get_cached_onboarding_meta())
+    settings = get_settings()
+    base = get_cached_onboarding_meta()
+    return APIResponse(
+        data=base.model_copy(
+            update={"fullOnboardingEnabled": settings.onboarding_full_enabled}
+        )
+    )
 
 
 @router.get("/place-suggestions")

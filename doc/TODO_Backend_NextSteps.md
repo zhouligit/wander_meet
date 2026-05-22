@@ -1,6 +1,6 @@
 # WanderMeet Backend TODO（接口联通后）
 
-更新时间：2026-05-06  
+更新时间：2026-05-20  
 适用范围：当前 FastAPI + MySQL + Redis 后端
 
 ---
@@ -77,20 +77,21 @@
 
 ---
 
-## 5. 资料与引导（全量拆分）— 对 API / DB 的增量
+## 5. 资料与引导
 
-需求拆解与页面清单见 **`doc/WanderMeet_Nomadtable_Onboarding_对照.md`**；本节只列**后端待办与接口面向**。
+**产品进度（极简引导已上线）**：见 **`doc/WanderMeet_新手引导_产品与进度.md`**。  
+全量步骤对照仍见 **`doc/WanderMeet_Nomadtable_Onboarding_对照.md`**。
 
 ### 5.1 数据库（`users` 表）
 
-- [ ] 新增列（草案名）：`country_code`、`traveler_roles`（JSON）、`current_place`、`stay_kind`、`stay_end_at`、`acquisition_source`、`notify_prefs`（JSON）、`show_distance` 等 — **详细类型与含义见对照文档 §5**。
-- [ ] 配套 **Alembic 迁移**；上线注意可空与默认值。
+- [x] 引导扩展列：`country_code`、`traveler_roles`、`current_place`、`stay_kind`、`stay_end_at`、`acquisition_source`、`notify_prefs`、`show_distance`、`onboarding_completed_at`（迁移 `20260508_0009` 等）。
+- [ ] 新环境部署时仍需执行 `alembic upgrade head`。
 
 ### 5.2 接口（`MeData` / `UpdateMeRequest`）
 
-- [ ] `GET /me`、`PATCH /me` 扩展字段与校验（旅行身份个数、`stay_end_at` 与 `stay_kind` 一致性等）。
-- [ ] （可选）`GET /meta/onboarding`：兴趣词表、归因枚举、旅行身份枚举，供小程序分屏 Chip。
-- [ ] （可选）在线人数等运营数字：`GET /meta/stats` 或接入现有监控 — 口径需产品定义。
+- [x] `GET /me`、`PATCH /me` 扩展字段与 `completeOnboarding`。
+- [x] `GET /meta/onboarding`：词表 + **`fullOnboardingEnabled`**（`ONBOARDING_FULL_ENABLED`，默认关闭多步引导）。
+- [ ] （可选）在线人数等运营数字：`GET /meta/stats` — 口径需产品定义。
 
 ### 5.3 其它（与引导相关）
 
