@@ -33,6 +33,13 @@ class InterestCategoryMeta(BaseModel):
     tags: list[InterestTagMeta]
 
 
+class PublishMetaData(BaseModel):
+    """发布页：是否先付费再发活动（由 ``PAY_PUBLISH_ENABLED`` 控制）。"""
+
+    publishPayEnabled: bool = False
+    publishFeeYuan: str = "0.10"
+
+
 class StayKindMeta(BaseModel):
     id: str
     label: str

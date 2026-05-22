@@ -34,6 +34,11 @@ router = APIRouter(prefix="/pay", tags=["pay"])
 logger = logging.getLogger(__name__)
 
 
+def _require_publish_pay_enabled() -> None:
+    if not get_settings().pay_publish_enabled:
+        raise HTTPException(status_code=403, detail="发布活动付费已关闭")
+
+
 async def _parse_yungou_notify_form(request: Request) -> dict[str, str]:
     """YunGouOS 回调为 ``application/x-www-form-urlencoded``（遗留通道）。"""
     body = await request.body()
@@ -49,6 +54,7 @@ async def pay_publish_qrcode(
     db: AsyncSession = Depends(get_db_session),
     current_user: User = Depends(get_current_user),
 ) -> APIResponse[PayPublishQrcodeData]:
+    _require_publish_pay_enabled()
     _assert_user_match(payload.user_id, current_user)
     order = await create_publish_qrcode_order(
         db,
@@ -73,6 +79,7 @@ async def pay_publish_minipay(
     db: AsyncSession = Depends(get_db_session),
     current_user: User = Depends(get_current_user),
 ) -> APIResponse[PayMinipayData]:
+    _require_publish_pay_enabled()
     _assert_user_match(payload.user_id, current_user)
     order, payment_params = await create_publish_minipay_order(
         db,

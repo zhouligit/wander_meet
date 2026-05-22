@@ -164,6 +164,8 @@ class Settings(BaseSettings):
     #: 支付结果回调完整 URL（须公网 HTTPS，如 https://域名/api/v1/wm/pay/yungou/notify）
     yungou_notify_url: str = ""
     yungou_use_mock: bool = False
+    #: 是否启用「发布活动前付费」；``false`` 时前端跳过支付（POST /activities 本身不校验支付单）
+    pay_publish_enabled: bool = False
     pay_publish_fee_yuan: str = "0.10"
     pay_publish_body: str = "发布活动"
     pay_publish_product: str = "publish"

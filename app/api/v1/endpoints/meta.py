@@ -3,7 +3,7 @@ from fastapi import APIRouter, Query, Response
 from app.core.config import get_settings
 from app.schemas.city_group import CityGroupsMetaData
 from app.schemas.common import APIResponse
-from app.schemas.meta import CategoryData, OnboardingMetaData
+from app.schemas.meta import CategoryData, OnboardingMetaData, PublishMetaData
 from app.schemas.place_activity import PlaceSuggestionItem, PlaceSuggestionsData
 from app.services.meta_cache import (
     get_cached_activity_categories,
@@ -32,6 +32,19 @@ async def city_groups_meta(response: Response) -> APIResponse[CityGroupsMetaData
 async def activity_categories(response: Response) -> APIResponse[CategoryData]:
     _apply_meta_http_cache(response)
     return APIResponse(data=get_cached_activity_categories())
+
+
+@router.get("/publish")
+async def publish_meta(response: Response) -> APIResponse[PublishMetaData]:
+    """发布活动付费开关（无需登录）。"""
+    _apply_meta_http_cache(response)
+    settings = get_settings()
+    return APIResponse(
+        data=PublishMetaData(
+            publishPayEnabled=settings.pay_publish_enabled,
+            publishFeeYuan=settings.pay_publish_fee_yuan,
+        )
+    )
 
 
 @router.get("/onboarding")
