@@ -784,17 +784,21 @@ async def activity_members(
     if activity.organizer_id != current_user.id and not is_member:
         raise HTTPException(status_code=403, detail="Only members can view")
 
-    members_query = await db.execute(
+    city_hall = is_city_hall_activity(activity)
+    member_stmt = (
         select(ActivityEnrollment, User)
         .join(User, User.id == ActivityEnrollment.user_id)
         .where(
             ActivityEnrollment.activity_id == activity_pk,
             ActivityEnrollment.status == "joined",
-            ActivityEnrollment.user_id != activity.organizer_id,
         )
         .order_by(ActivityEnrollment.created_at.asc())
-        .offset((page - 1) * pageSize)
-        .limit(pageSize)
+    )
+    if not city_hall:
+        member_stmt = member_stmt.where(ActivityEnrollment.user_id != activity.organizer_id)
+
+    members_query = await db.execute(
+        member_stmt.offset((page - 1) * pageSize).limit(pageSize)
     )
     members = [
         ActivityMemberItem(
@@ -806,18 +810,19 @@ async def activity_members(
         )
         for en, u in members_query.all()
     ]
-    organizer = await db.scalar(select(User).where(User.id == activity.organizer_id))
-    if organizer:
-        members.insert(
-            0,
-            ActivityMemberItem(
-                userId=f"u_{organizer.id}",
-                nickname=organizer.nickname,
-                avatarUrl=organizer.avatar_url,
-                role="organizer",
-                joinedAt=activity.created_at,
-            ),
-        )
+    if not city_hall and page == 1:
+        organizer = await db.scalar(select(User).where(User.id == activity.organizer_id))
+        if organizer:
+            members.insert(
+                0,
+                ActivityMemberItem(
+                    userId=f"u_{organizer.id}",
+                    nickname=organizer.nickname,
+                    avatarUrl=organizer.avatar_url,
+                    role="organizer",
+                    joinedAt=activity.created_at,
+                ),
+            )
     return APIResponse(data=ActivityMembersData(list=members))
 
 
