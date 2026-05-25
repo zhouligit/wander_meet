@@ -66,11 +66,18 @@ async def bind_phone_to_user(
     if existing and existing.id != current_user.id:
         cur_oid = (current_user.mp_openid or "").strip()
         exist_oid = (existing.mp_openid or "").strip()
+        cur_dy = (current_user.dy_openid or "").strip()
+        exist_dy = (existing.dy_openid or "").strip()
         # 仅当「双方都是微信账号且 openid 不同」时拒绝；H5 邮箱号无 openid 可并入该手机号账号
         if exist_oid and cur_oid and exist_oid != cur_oid:
             raise HTTPException(
                 status_code=409,
                 detail="该手机号已绑定其他微信，请使用对应方式登录",
+            )
+        if exist_dy and cur_dy and exist_dy != cur_dy:
+            raise HTTPException(
+                status_code=409,
+                detail="该手机号已绑定其他抖音账号，请使用对应方式登录",
             )
         from_id = current_user.id
         to_id = existing.id

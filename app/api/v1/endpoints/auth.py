@@ -13,6 +13,7 @@ from app.core.config import get_settings
 from app.core.security import (
     create_access_token,
     decode_access_token,
+    hash_douyin_openid,
     hash_phone,
     hash_wechat_openid,
 )
@@ -29,6 +30,7 @@ from app.services.email_auth import (
     request_email_password_reset,
     reset_email_password,
 )
+from app.services.douyin_miniapp import DouyinLoginError, code_to_session as douyin_code_to_session
 from app.services.wechat_miniapp import WechatLoginError, code_to_session
 from app.models.user import User
 from app.schemas.datetime_iso import datetime_to_rfc3339_utc_z
@@ -47,6 +49,7 @@ from app.schemas.auth import (
     SendSMSCodeData,
     SendSMSCodeRequest,
     WechatLoginRequest,
+    DouyinLoginRequest,
 )
 from app.schemas.common import APIResponse
 
@@ -74,6 +77,10 @@ async def _limit_sms_login_ip(request: Request) -> None:
 
 async def _limit_wechat_login_ip(request: Request) -> None:
     await enforce_auth_ip_rate_limit(request, "wechat_login")
+
+
+async def _limit_douyin_login_ip(request: Request) -> None:
+    await enforce_auth_ip_rate_limit(request, "douyin_login")
 
 
 async def _limit_email_register_ip(request: Request) -> None:
@@ -339,6 +346,39 @@ async def wechat_login(
         if session.unionid and not user.mp_unionid:
             user.mp_unionid = session.unionid
             await db.commit()
+
+    _ensure_user_can_login(user)
+    return APIResponse(data=await _build_login_response(user))
+
+
+@router.post("/douyin/login", dependencies=[Depends(_limit_douyin_login_ip)])
+async def douyin_login(
+    payload: DouyinLoginRequest, db: AsyncSession = Depends(get_db_session)
+) -> APIResponse[SMSLoginData]:
+    """抖音小程序 ``tt.login`` 的 code 换 openid 并签发 token（响应与短信/微信登录一致）。"""
+    try:
+        session = await douyin_code_to_session(payload.code)
+    except DouyinLoginError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    openid = session.openid
+    user = await db.scalar(select(User).where(User.dy_openid == openid))
+    if not user:
+        phone_hash = hash_douyin_openid(openid)
+        suffix = openid[-4:] if len(openid) >= 4 else openid
+        user = User(
+            phone=None,
+            phone_hash=phone_hash,
+            dy_openid=openid,
+            nickname=f"旅人{suffix}",
+            acquisition_source="mp_douyin",
+        )
+        db.add(user)
+        await db.commit()
+        await db.refresh(user)
+        logger.info("douyin_login_new_user user_id=%s openid_suffix=%s", user.id, suffix)
+    else:
+        await db.commit()
 
     _ensure_user_can_login(user)
     return APIResponse(data=await _build_login_response(user))

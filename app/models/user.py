@@ -15,6 +15,8 @@ class User(Base):
     #: 本小程序 openid（微信一键登录）
     mp_openid: Mapped[str | None] = mapped_column(String(64), nullable=True, unique=True)
     mp_unionid: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    #: 抖音小程序 openid（tt.login → code2session）
+    dy_openid: Mapped[str | None] = mapped_column(String(64), nullable=True, unique=True)
     email: Mapped[str | None] = mapped_column(String(254), nullable=True, unique=True)
     password_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
     nickname: Mapped[str] = mapped_column(String(32))

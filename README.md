@@ -43,6 +43,7 @@
 - `POST /api/v1/wm/auth/sms/send`
 - `POST /api/v1/wm/auth/sms/login`
 - `POST /api/v1/wm/auth/wechat/login`（小程序 `wx.login` 的 code）
+- `POST /api/v1/wm/auth/douyin/login`（抖音小程序 `tt.login` 的 code，见 `doc/dy_login.md`）
 - `POST /api/v1/wm/auth/email/register`（H5 邮箱注册，见 `doc/mail_login.md`）
 - `POST /api/v1/wm/auth/email/login`（H5 邮箱登录）
 - `POST /api/v1/wm/auth/email/forgot-password`（H5 忘记密码发验证码）
@@ -98,6 +99,11 @@
 - Implement create activity, enroll/cancel, and activity detail APIs.
 - Add verification and report/block modules.
 - SMS 验证码：生产环境 `SMS_USE_MOCK=false`，通过 **`SMS_PROVIDER`** 选择 **`ihuyi`**（互亿无线，默认）或 **`aliyun`**（阿里云 SendSms）；变量见 `.env.example`。
+
+## Docs (product / ops)
+
+- 抖音小程序发布步骤（分阶段）：`doc/WanderMeet_抖音小程序发布步骤.md`
+- 百度云部署（yikuaikaixin.cn）：`doc/WanderMeet_百度云部署_yikuaikaixin.md`
 
 ## Ops Scripts
 

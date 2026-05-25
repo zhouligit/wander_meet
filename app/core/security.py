@@ -26,6 +26,11 @@ def hash_wechat_openid(openid: str) -> str:
     return hashlib.sha256(f"wx:{openid}".encode("utf-8")).hexdigest()
 
 
+def hash_douyin_openid(openid: str) -> str:
+    """无手机号抖音用户占位的 ``phone_hash``。"""
+    return hashlib.sha256(f"dy:{openid}".encode("utf-8")).hexdigest()
+
+
 def hash_email(email: str) -> str:
     """纯邮箱账号占位的 ``phone_hash``（与真实手机号、微信区分）。"""
     return hashlib.sha256(f"email:{email}".encode("utf-8")).hexdigest()

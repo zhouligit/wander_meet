@@ -106,6 +106,7 @@ class Settings(BaseSettings):
     auth_login_ip_limit_per_minute: int = 120
     #: 微信登录：同一 IP 每分钟最多次数（0=不限制）
     auth_wechat_login_ip_limit_per_minute: int = 120
+    auth_douyin_login_ip_limit_per_minute: int = 120
     #: 邮箱注册：同一 IP 每分钟最多次数（0=不限制）
     auth_email_register_ip_limit_per_minute: int = 20
     #: 邮箱登录：同一 IP 每分钟最多次数（0=不限制）
@@ -144,6 +145,11 @@ class Settings(BaseSettings):
     wx_mp_appsecret: str = ""
     #: 本地/测试：不调微信，用 ``code`` 派生固定 openid（上线务必 false）
     wx_mp_use_mock: bool = False
+
+    #: 抖音小程序 AppID / AppSecret（``auth/douyin/login`` 调 code2session）
+    dy_mp_appid: str = ""
+    dy_mp_appsecret: str = ""
+    dy_mp_use_mock: bool = False
 
     #: 支付通道：wechat（官方 APIv3，默认）| yungou（遗留备选，后期可下线）
     pay_provider: str = "wechat"

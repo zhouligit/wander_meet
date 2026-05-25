@@ -60,6 +60,7 @@ def user_to_cache_dict(user: User) -> dict[str, Any]:
         "phone_hash": user.phone_hash,
         "mp_openid": user.mp_openid,
         "mp_unionid": user.mp_unionid,
+        "dy_openid": user.dy_openid,
         "email": user.email,
         "password_hash": user.password_hash,
         "nickname": user.nickname,
