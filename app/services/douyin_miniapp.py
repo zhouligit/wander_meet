@@ -13,6 +13,14 @@ logger = logging.getLogger(__name__)
 
 _CODE2SESSION_URL = "https://developer.toutiao.com/api/apps/v2/jscode2session"
 
+# 见 https://developer.open-douyin.com/docs/.../code-2-session
+_DY_ERR_MESSAGES: dict[int, str] = {
+    40015: "Douyin appid 错误（检查 DY_MP_APPID 是否与小程序 AppID 一致）",
+    40017: "Douyin secret 错误（检查 DY_MP_APPSECRET 是否为开发设置里的 App Secret）",
+    40018: "Douyin login code 无效（常见：服务器 appid 与开发者工具不一致，或 code 已用过）",
+    40019: "Douyin anonymous_code 无效",
+}
+
 
 class DouyinLoginError(Exception):
     """抖音 code2session 失败。"""
@@ -67,8 +75,16 @@ async def code_to_session(code: str) -> DouyinSession:
     err_no = body.get("err_no", 0)
     if err_no not in (0, None):
         tips = body.get("err_tips") or body.get("message") or "unknown"
-        logger.warning("douyin jscode2session err_no=%s tips=%s", err_no, tips)
-        raise DouyinLoginError("Invalid or expired Douyin login code")
+        logger.warning(
+            "douyin jscode2session err_no=%s tips=%s appid_suffix=%s",
+            err_no,
+            tips,
+            (appid[-6:] if len(appid) >= 6 else appid),
+        )
+        msg = _DY_ERR_MESSAGES.get(int(err_no)) if err_no is not None else None
+        if not msg:
+            msg = f"Douyin login failed (err_no={err_no}, {tips})"
+        raise DouyinLoginError(msg)
 
     data = body.get("data") or {}
     if not isinstance(data, dict):
