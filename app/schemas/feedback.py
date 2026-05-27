@@ -11,6 +11,7 @@ FeedbackScene = Literal[
     "place_search",
     "publish",
     "profile",
+    "suggestion",
     "other",
 ]
 
