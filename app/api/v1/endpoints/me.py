@@ -775,15 +775,15 @@ async def create_user_feedback(
     if current_user.status != "active":
         raise HTTPException(status_code=403, detail="User is restricted")
     plat = (payload.platform or "mp-weixin").strip()[:16] or "mp-weixin"
-    app_ver = (payload.appVersion or "").strip()[:32]
+    app_ver = (payload.app_version or "").strip()[:32]
     exp = (payload.expectation or "").strip()[:500]
-    note = (payload.contactNote or "").strip()[:160]
+    note = (payload.contact_note or "").strip()[:160]
     row = UserFeedback(
         user_id=current_user.id,
         scene=payload.scene,
         description=payload.description.strip(),
         expectation=exp,
-        contact_willing=bool(payload.contactWilling),
+        contact_willing=bool(payload.contact_willing),
         contact_note=note,
         platform=plat,
         app_version=app_ver,
