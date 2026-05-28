@@ -1,3 +1,5 @@
 # 仅用于生成软著鉴别材料 PDF：pip install -r requirements-soft-reg-pdf.txt
 reportlab>=4.0
-PyPDF2>=3.0
+pypdf>=4.0
+Pillow>=10.0
+playwright>=1.40

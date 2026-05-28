@@ -1,22 +1,15 @@
 #!/usr/bin/env python3
 """
-将 dist/soft_registration 下的 txt 排版为「程序鉴别材料」PDF（A4、页眉、页码）。
+将 source_front.txt + source_back.txt 排版为程序鉴别材料 PDF：
+连续 60 页（前 30 + 后 30），每页 50 行源程序。
 
-依赖：pip install -r requirements-soft-reg-pdf.txt
-
-字体：环境变量 WM_SOFT_REG_FONT；否则 macOS 尝试 Arial Unicode.ttf。
-
-用法（在 wander_meet 根目录）：
-  pip install -r requirements-soft-reg-pdf.txt
+用法（wander_meet 根目录）：
+  python3 scripts/soft_registration_export.py --frontend ../lv_ju/travel-together/src
+  python3 scripts/sanitize_soft_registration_outputs.py
   python3 scripts/build_soft_registration_pdf.py
-  python3 scripts/build_soft_registration_pdf.py --mode merged
-
-请修改 SOFT_FULL_NAME / VERSION 与 R11 申请表一致。
 """
 from __future__ import annotations
 
-import argparse
-import os
 import re
 from pathlib import Path
 
@@ -26,38 +19,45 @@ from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfgen import canvas
 
-SOFT_FULL_NAME = "旅聚户外活动报名与社交应用软件"
-VERSION = "V1.0"
+from soft_reg_config import (
+    COPYRIGHT_HOLDER,
+    DIST_DIR,
+    LINES_PER_PAGE,
+    OUT_DOC_DIR,
+    PAGES_BACK,
+    PAGES_FRONT,
+    SOFT_FULL_NAME,
+    TOTAL_PROGRAM_PAGES,
+    VERSION,
+)
 
 PAGE_WIDTH, PAGE_HEIGHT = A4
-LEFT_PT = 52
-RIGHT_PT = 52
-TOP_PT = 52
-BOTTOM_PT = 52
-HEADER_BAND = 24
-FONT_SIZE = 8
-LINE_HEIGHT = float(FONT_SIZE) * 1.42
-MAX_CHARS_PER_LINE = 106
+LEFT_PT = 48
+RIGHT_PT = 48
+TOP_PT = 44
+BOTTOM_PT = 44
+HEADER_BAND = 22
+FONT_SIZE = 8.5
+LINE_HEIGHT = 13.6
+MAX_CHARS = 108
+PAGE_HEADER_RE = re.compile(r"第\s*(\d+)\s*页")
 
 
 def _find_unicode_font() -> str:
+    import os
+
     env = os.environ.get("WM_SOFT_REG_FONT", "").strip()
     if env and Path(env).is_file():
         return env
-    candidates = [
+    for p in (
         "/Library/Fonts/Arial Unicode.ttf",
         "/System/Library/Fonts/Supplemental/Arial Unicode.ttf",
         Path.home() / "Library/Fonts/NotoSansSC-Regular.otf",
-        "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.otf",
-        "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttf",
-    ]
-    for p in candidates:
-        path = Path(p) if isinstance(p, Path) else Path(str(p))
+    ):
+        path = Path(p)
         if path.is_file():
             return str(path)
-    raise SystemExit(
-        "未找到中文字体。请安装 Noto Sans SC，或设置 WM_SOFT_REG_FONT=/绝对路径/字体.ttf"
-    )
+    raise SystemExit("未找到中文字体，请设置 WM_SOFT_REG_FONT")
 
 
 def _register_font(path: str) -> str:
@@ -66,127 +66,106 @@ def _register_font(path: str) -> str:
     return name
 
 
-def strip_builtin_page_headers(lines: list[str]) -> list[str]:
-    out: list[str] = []
+def parse_paginated_txt(path: Path) -> list[list[str]]:
+    """从 export 生成的分页 txt 解析出每页恰好 50 行代码。"""
+    lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+    pages: list[list[str]] = []
     i = 0
-    n = len(lines)
-    pat = re.compile(r"第\s*\d+\s*页\s*$")
-    while i < n:
-        line = lines[i]
-        if i + 1 < n and pat.search(line) and lines[i + 1].strip().startswith("-"):
-            i += 2
-            continue
-        out.append(line.rstrip("\n"))
-        i += 1
-    return out
-
-
-def read_lines(path: Path) -> list[str]:
-    return path.read_text(encoding="utf-8", errors="replace").splitlines()
+    while i < len(lines):
+        if PAGE_HEADER_RE.search(lines[i]):
+            i += 1
+            if i < len(lines) and lines[i].strip().startswith("-"):
+                i += 1
+            chunk: list[str] = []
+            while i < len(lines) and not PAGE_HEADER_RE.search(lines[i]):
+                chunk.append(lines[i])
+                i += 1
+            code = chunk[:LINES_PER_PAGE]
+            if len(code) < LINES_PER_PAGE:
+                code.extend([""] * (LINES_PER_PAGE - len(code)))
+            pages.append(code)
+        else:
+            i += 1
+    return pages
 
 
 def wrap_line(s: str) -> list[str]:
-    if len(s) <= MAX_CHARS_PER_LINE:
+    s = s.expandtabs(4)
+    if len(s) <= MAX_CHARS:
         return [s]
-    return [s[i : i + MAX_CHARS_PER_LINE] for i in range(0, len(s), MAX_CHARS_PER_LINE)]
+    return [s[j : j + MAX_CHARS] for j in range(0, len(s), MAX_CHARS)]
 
 
-def render_pdf(out_path: Path, lines: list[str], font_name: str, start_page: int = 1) -> None:
+def render_program_pdf(out_path: Path, pages: list[list[str]], font_name: str) -> None:
+    if len(pages) != TOTAL_PROGRAM_PAGES:
+        raise SystemExit(
+            f"需要 {TOTAL_PROGRAM_PAGES} 页源程序，当前解析得到 {len(pages)} 页。"
+            f"请确认已运行 soft_registration_export.py 且合并行数足够。"
+        )
+
     out_path.parent.mkdir(parents=True, exist_ok=True)
     c = canvas.Canvas(str(out_path), pagesize=A4)
-
     usable_top = PAGE_HEIGHT - TOP_PT - HEADER_BAND
     usable_bottom = BOTTOM_PT
-    max_lines = max(35, int((usable_top - usable_bottom) / LINE_HEIGHT))
 
-    page_no = start_page
+    for page_no, code_lines in enumerate(pages, start=1):
+        if len(code_lines) != LINES_PER_PAGE:
+            raise SystemExit(f"第 {page_no} 页行数 {len(code_lines)} != {LINES_PER_PAGE}")
 
-    def draw_header() -> None:
         c.setFont(font_name, 9)
-        c.setFillColor(colors.HexColor("#0f172a"))
-        c.drawString(LEFT_PT, PAGE_HEIGHT - TOP_PT + 8, f"{SOFT_FULL_NAME}  {VERSION}"[:96])
-        c.drawRightString(PAGE_WIDTH - RIGHT_PT, PAGE_HEIGHT - TOP_PT + 8, f"第 {page_no} 页")
+        c.setFillColor(colors.HexColor("#334155"))
+        c.drawString(LEFT_PT, PAGE_HEIGHT - TOP_PT + 6, f"{SOFT_FULL_NAME}  {VERSION}"[:96])
+        c.drawRightString(PAGE_WIDTH - RIGHT_PT, PAGE_HEIGHT - TOP_PT + 6, f"第 {page_no} 页")
 
-    def new_page() -> None:
-        nonlocal page_no
-        c.showPage()
-        page_no += 1
-        draw_header()
-
-    draw_header()
-    used = 0
-
-    for raw in lines:
-        for part in wrap_line(raw.expandtabs(4)):
-            if used >= max_lines:
-                new_page()
-                used = 0
-            y = usable_top - (used + 1) * LINE_HEIGHT
+        for row, raw in enumerate(code_lines):
+            y = usable_top - (row + 1) * LINE_HEIGHT
             c.setFont(font_name, FONT_SIZE)
             c.setFillColor(colors.black)
-            c.drawString(LEFT_PT, y, part)
-            used += 1
+            c.drawString(LEFT_PT, y, raw.expandtabs(4)[:MAX_CHARS])
+        c.showPage()
 
     c.save()
 
 
+def write_cover_txt(dist: Path) -> None:
+    text = f"""程序鉴别材料 — 源程序（前30页+后30页）
+
+软件名称：{SOFT_FULL_NAME}
+版本号：{VERSION}
+著作权人：{COPYRIGHT_HOLDER}
+开发完成日期：2026年
+源程序语言：Python、JavaScript、Vue 等
+提交页数：共 {TOTAL_PROGRAM_PAGES} 页（第1–{PAGES_FRONT}页为前段连续源程序，第{PAGES_FRONT + 1}–{TOTAL_PROGRAM_PAGES}页为后段连续源程序）
+每页不少于 {LINES_PER_PAGE} 行。
+"""
+    (dist / "cover_template.txt").write_text(text, encoding="utf-8")
+
+
 def main() -> None:
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--dist", type=Path, default=Path("dist/soft_registration"))
-    parser.add_argument("--out-dir", type=Path, default=None)
-    parser.add_argument(
-        "--mode",
-        choices=("split", "merged"),
-        default="split",
-        help="split：前30、后30各一个PDF；merged：封面+前+后+结束标记，连续页码一个PDF",
-    )
-    parser.add_argument("--no-strip-headers", action="store_true")
-    args = parser.parse_args()
-
-    dist = args.dist
-    out_dir = args.out_dir or (dist / "pdf")
-    font_path = _find_unicode_font()
-    font_name = _register_font(font_path)
-    print("字体:", font_path)
-
+    dist = DIST_DIR
     front_path = dist / "source_front.txt"
     back_path = dist / "source_back.txt"
-    cover_path = dist / "cover_template.txt"
-    end_path = dist / "end_marker.txt"
-
     if not front_path.is_file() or not back_path.is_file():
-        raise SystemExit("请先运行 python3 scripts/soft_registration_export.py 生成 txt")
+        raise SystemExit("请先运行 soft_registration_export.py 与 sanitize_soft_registration_outputs.py")
 
-    front_lines = read_lines(front_path)
-    back_lines = read_lines(back_path)
-    if not args.no_strip_headers:
-        front_lines = strip_builtin_page_headers(front_lines)
-        back_lines = strip_builtin_page_headers(back_lines)
+    front_pages = parse_paginated_txt(front_path)
+    back_pages = parse_paginated_txt(back_path)
+    print(f"解析页数：前 {len(front_pages)}，后 {len(back_pages)}")
 
-    if args.mode == "split":
-        p_front = out_dir / "program_source_front.pdf"
-        p_back = out_dir / "program_source_back.pdf"
-        render_pdf(p_front, front_lines, font_name, start_page=1)
-        render_pdf(p_back, back_lines, font_name, start_page=1)
-        print("已生成:", p_front.resolve())
-        print("已生成:", p_back.resolve())
-        print("说明：两个文件页码均从第 1 页开始；若网站要求一套连续页码，请改用 --mode merged。")
-        return
+    font_name = _register_font(_find_unicode_font())
+    all_pages = front_pages + back_pages
 
-    merged_lines: list[str] = []
-    if cover_path.is_file():
-        merged_lines.extend(read_lines(cover_path))
-        merged_lines.extend(["", "---", ""])
-    merged_lines.extend(front_lines)
-    merged_lines.extend(["", "--- （以下为后 30 页对应源码）---", ""])
-    merged_lines.extend(back_lines)
-    if end_path.is_file():
-        merged_lines.extend(["", "---", ""])
-        merged_lines.extend(read_lines(end_path))
+    out_pdf = dist / "pdf" / "program_identification_material.pdf"
+    render_program_pdf(out_pdf, all_pages, font_name)
+    print("已生成:", out_pdf.resolve(), f"（共 {len(all_pages)} 页）")
 
-    merged_pdf = out_dir / "program_identification_material.pdf"
-    render_pdf(merged_pdf, merged_lines, font_name, start_page=1)
-    print("已生成:", merged_pdf.resolve())
+    write_cover_txt(dist)
+    # 同步到 doc 目录便于递交
+    OUT_DOC_DIR.mkdir(parents=True, exist_ok=True)
+    import shutil
+
+    shutil.copy2(out_pdf, OUT_DOC_DIR / "program_identification_material.pdf")
+    print("已复制到:", (OUT_DOC_DIR / "program_identification_material.pdf").resolve())
 
 
 if __name__ == "__main__":

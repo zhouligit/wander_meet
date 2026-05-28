@@ -2,13 +2,13 @@
 """
 软著「程序鉴别材料」源码摘录辅助脚本（一般交存：前 30 页 + 后 30 页，每页 50 行）。
 
-使用前请修改下方 SOFT_FULL_NAME、VERSION，使其与 R11 申请表「软件全称」「版本号」完全一致。
+名称与版本见 scripts/soft_reg_config.py（当前：去旅聚）。
 
 用法（在项目 wander_meet 根目录）：
   python3 scripts/soft_registration_export.py
 
-可选：同时纳入前端仓库（uni-app）：
-  python3 scripts/soft_registration_export.py --frontend /path/to/lv_ju/travel-together/src
+默认纳入前端 ../lv_ju/travel-together/src；也可指定：
+  python3 scripts/soft_registration_export.py --frontend /path/to/travel-together/src
 
 输出目录：dist/soft_registration/
   - source_concat_full.txt       合并后的完整源码（便于核对总行数）
@@ -26,22 +26,27 @@
 生成 PDF（需 reportlab，建议独立 venv）：
   python3 -m venv .venv-soft-reg && .venv-soft-reg/bin/pip install -r requirements-soft-reg-pdf.txt
   .venv-soft-reg/bin/python scripts/sanitize_soft_registration_outputs.py
-  .venv-soft-reg/bin/python scripts/build_soft_registration_pdf.py --mode merged
+  .venv-soft-reg/bin/python scripts/build_soft_registration_pdf.py
 """
 
 from __future__ import annotations
 
 import argparse
 import os
+import sys
 from pathlib import Path
 from typing import Iterable
 
-# ============ 请与申请表完全一致 ============
-SOFT_FULL_NAME = "旅聚户外活动报名与社交应用软件"
-VERSION = "V1.0"
-LINES_PER_PAGE = 50
-PAGES_FRONT = 30
-PAGES_BACK = 30
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from soft_reg_config import (  # noqa: E402
+    DEFAULT_FRONTEND_SRC,
+    DIST_DIR,
+    LINES_PER_PAGE,
+    PAGES_BACK,
+    PAGES_FRONT,
+    SOFT_FULL_NAME,
+    VERSION,
+)
 
 SKIP_DIR_NAMES = {
     "__pycache__",
@@ -101,7 +106,16 @@ def preferred_backend_order(files: list[Path]) -> list[Path]:
     return front + rest
 
 
-def read_concat(paths: Iterable[Path], root_hint: str) -> tuple[list[str], list[tuple[str, int]]]:
+def _display_path(path: Path, repo_root: Path) -> str:
+    try:
+        return str(path.resolve().relative_to(repo_root.resolve())).replace("\\", "/")
+    except ValueError:
+        return path.name
+
+
+def read_concat(
+    paths: Iterable[Path], root_hint: str, repo_root: Path
+) -> tuple[list[str], list[tuple[str, int]]]:
     """返回全部行 + (文件标记, 起始行号) 映射便于核对。"""
     lines: list[str] = []
     index: list[tuple[str, int]] = []
@@ -111,7 +125,7 @@ def read_concat(paths: Iterable[Path], root_hint: str) -> tuple[list[str], list[
             text = path.read_text(encoding="utf-8", errors="replace")
         except OSError:
             continue
-        rel = str(path)
+        rel = _display_path(path, repo_root)
         index.append((rel, len(lines) + 1))
         lines.append(marker)
         lines.append(f"# FILE: {rel}")
@@ -153,13 +167,13 @@ def main() -> None:
     parser.add_argument(
         "--frontend",
         type=str,
-        default="",
-        help="可选：前端 src 目录绝对路径，将合并 .vue/.js/.scss（不含 node_modules）",
+        default=str(DEFAULT_FRONTEND_SRC) if DEFAULT_FRONTEND_SRC.is_dir() else "",
+        help="前端 src 目录，将合并 .vue/.js/.scss（不含 node_modules）",
     )
     args = parser.parse_args()
 
     repo_root = Path(__file__).resolve().parents[1]
-    out_dir = repo_root / "dist" / "soft_registration"
+    out_dir = DIST_DIR
     out_dir.mkdir(parents=True, exist_ok=True)
 
     all_segments: list[str] = []
@@ -176,7 +190,7 @@ def main() -> None:
     backend_files = list(dict.fromkeys(backend_files))
     backend_files = preferred_backend_order(backend_files)
 
-    blines, bidx = read_concat(backend_files, "backend")
+    blines, bidx = read_concat(backend_files, "backend", repo_root)
     all_segments.extend(blines)
     report_lines.append(f"后端文件数: {len(backend_files)}，合并行数: {len(blines)}")
 
@@ -185,7 +199,7 @@ def main() -> None:
         fr = Path(args.frontend).expanduser().resolve()
         if fr.is_dir():
             ff = iter_source_files(fr, FRONTEND_SUFFIXES)
-            flines, _ = read_concat(ff, "frontend")
+            flines, _ = read_concat(ff, "frontend", repo_root)
             all_segments.extend(flines)
             report_lines.append(f"前端目录: {fr}")
             report_lines.append(f"前端文件数: {len(ff)}，合并行数: {len(flines)}")
@@ -229,16 +243,17 @@ def main() -> None:
             "（全文已不足 60 页，仅使用 source_concat_full.txt 全交）\n", encoding="utf-8"
         )
 
-    cover = f"""程序鉴别材料 — 源程序首页说明（示例，请打印在正文第一页前或作为封面）
+    from soft_reg_config import COPYRIGHT_HOLDER, TOTAL_PROGRAM_PAGES
+
+    cover = f"""程序鉴别材料 — 源程序说明（与正文 PDF 一并递交）
 
 软件名称：{SOFT_FULL_NAME}
 版本号：{VERSION}
-开发单位：（与著作权人一致）
-提交日期：____年____月____日
+著作权人：{COPYRIGHT_HOLDER}
 
-本材料为上述软件源程序的鉴别材料（一般交存），共提交 ____ 页。
-源程序由 ________ 语言编写，节选自已登记的源代码，按页连续编排。
-（可按登记机关最新范本调整措辞）
+本材料为上述软件源程序的鉴别材料（一般交存），共提交 {TOTAL_PROGRAM_PAGES} 页：
+第 1–{PAGES_FRONT} 页为连续源程序前段，第 {PAGES_FRONT + 1}–{TOTAL_PROGRAM_PAGES} 页为连续源程序后段；
+每页不少于 {LINES_PER_PAGE} 行。语言含 Python、JavaScript、Vue 等。
 
 ---
 """

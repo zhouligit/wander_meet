@@ -1,28 +1,16 @@
 #!/usr/bin/env python3
 """
-生成「文档鉴别材料」PDF（用户操作手册体例）：A4、页眉软件全称+版本、连续页码。
-
-依赖：pip install -r requirements-soft-reg-pdf.txt
-
-默认读取：doc/soft_registration/manual_content_zh.txt
-输出：dist/soft_registration/pdf/documentation_identification_full.pdf
-
-若全文 PDF 页数 ≥60，可同时导出前30页+后30页合并：
-  documentation_identification_submit.pdf
+生成文档鉴别材料 PDF（用户操作手册）：嵌入界面截图，满足图文对照要求。
 
 用法：
-  python3 -m venv .venv-soft-reg && .venv-soft-reg/bin/pip install -r requirements-soft-reg-pdf.txt
-  .venv-soft-reg/bin/python scripts/build_doc_identification_pdf.py
-  .venv-soft-reg/bin/python scripts/build_doc_identification_pdf.py \\
-    --copyright-holder-line "著作权人（开发单位）：某某科技有限公司"
-
-可选依赖 PyPDF2：全文≥60页时自动生成前30+后30合并稿。
+  python3 scripts/generate_manual_screenshots.py
+  python3 scripts/build_doc_identification_pdf.py
 """
 from __future__ import annotations
 
 import argparse
 import html
-import os
+import re
 from pathlib import Path
 
 from reportlab.lib import colors
@@ -32,14 +20,56 @@ from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.units import mm
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
+from reportlab.platypus import Image as RLImage
 from reportlab.platypus import PageBreak, Paragraph, SimpleDocTemplate, Spacer
 
-SOFT_FULL_NAME = "旅聚户外活动报名与社交应用软件"
-VERSION = "V1.0"
-COPYRIGHT_HOLDER_LINE = "著作权人（开发单位）：枣庄禾跃科技有限公司"
+from soft_reg_config import (
+    COPYRIGHT_HOLDER_LINE,
+    MANUAL_SOURCE,
+    OUT_DOC_DIR,
+    SCREENSHOTS_DIR,
+    SOFT_FULL_NAME,
+    SOFT_SHORT_NAME,
+    VERSION,
+)
+
+SCREENSHOT_PLACEHOLDER_RE = re.compile(r"【此处插入截图[：:](.+?)】")
+
+# 截图说明关键字 → 文件名（doc/soft_registration/screenshots/）
+CAPTION_TO_FILE: list[tuple[str, str]] = [
+    ("软件名称或小程序入口", "entry.png"),
+    ("小程序搜索", "entry.png"),
+    ("首页/引导", "home.png"),
+    ("首页活动列表", "home.png"),
+    ("手机号登录", "login.png"),
+    ("完善资料", "onboarding.png"),
+    ("新手引导", "onboarding.png"),
+    ("活动详情", "detail.png"),
+    ("发布活动", "publish.png"),
+    ("发现页", "discover.png"),
+    ("我的活动列表", "my_activities.png"),
+    ("消息列表", "messages.png"),
+    ("聊天界面", "messages.png"),
+    ("我的页面", "profile.png"),
+    ("个人编辑", "profile.png"),
+    ("隐私政策", "privacy.png"),
+    ("社区规范", "privacy.png"),
+    ("底部主导航", "tabbar.png"),
+    ("四联屏", "flow.png"),
+    ("关键字段分区", "publish.png"),
+    ("消息列表分组", "messages.png"),
+    ("活动详情页对比", "detail_compare.png"),
+    ("修订记录", "home.png"),
+    ("分组或筛选", "messages.png"),
+    ("典型活动详情页对比", "detail_compare.png"),
+    ("聊天", "chat.png"),
+    ("主导航栏", "tabbar.png"),
+]
 
 
 def _find_unicode_font() -> str:
+    import os
+
     env = os.environ.get("WM_SOFT_REG_FONT", "").strip()
     if env and Path(env).is_file():
         return env
@@ -47,16 +77,26 @@ def _find_unicode_font() -> str:
         "/Library/Fonts/Arial Unicode.ttf",
         "/System/Library/Fonts/Supplemental/Arial Unicode.ttf",
         Path.home() / "Library/Fonts/NotoSansSC-Regular.otf",
-        "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.otf",
     ):
         path = Path(p)
         if path.is_file():
             return str(path)
-    raise SystemExit("未找到中文字体，请设置 WM_SOFT_REG_FONT=/path/to/font.ttf")
+    raise SystemExit("未找到中文字体，请设置 WM_SOFT_REG_FONT")
 
 
 def _escape_xml(s: str) -> str:
     return html.escape(s).replace("\n", "<br/>")
+
+
+def caption_to_image(caption: str) -> Path | None:
+    cap = caption.strip()
+    for key, fname in CAPTION_TO_FILE:
+        if key in cap:
+            p = SCREENSHOTS_DIR / fname
+            if p.is_file():
+                return p
+    fallback = SCREENSHOTS_DIR / "home.png"
+    return fallback if fallback.is_file() else None
 
 
 def build_story(font_name: str, body_path: Path, copyright_line: str) -> list:
@@ -99,6 +139,15 @@ def build_story(font_name: str, body_path: Path, copyright_line: str) -> list:
         spaceAfter=4,
         firstLineIndent=20,
     )
+    caption_style = ParagraphStyle(
+        name="Cap",
+        fontName=font_name,
+        fontSize=9,
+        leading=13,
+        alignment=TA_CENTER,
+        textColor=colors.HexColor("#64748b"),
+        spaceAfter=8,
+    )
     center_small = ParagraphStyle(
         name="CenterSmall",
         fontName=font_name,
@@ -109,8 +158,6 @@ def build_story(font_name: str, body_path: Path, copyright_line: str) -> list:
     )
 
     story: list = []
-
-    # 封面
     story.append(Spacer(1, 36 * mm))
     story.append(Paragraph(_escape_xml("用户操作手册"), title_style))
     story.append(Spacer(1, 8 * mm))
@@ -123,8 +170,8 @@ def build_story(font_name: str, body_path: Path, copyright_line: str) -> list:
     story.append(
         Paragraph(
             _escape_xml(
-                "说明：本文档用于软件著作权登记之文档鉴别材料（用户操作类说明）。"
-                "插图位置已用文字标注，可在 Word 中替换为实际界面截图后重新导出 PDF。"
+                f"说明：本文档为「{SOFT_SHORT_NAME}」软件著作权登记之文档鉴别材料。"
+                "正文配有客户端主要功能界面截图（与线上一致之 H5/小程序界面），与操作说明一一对应。"
             ),
             body_style,
         )
@@ -146,6 +193,18 @@ def build_story(font_name: str, body_path: Path, copyright_line: str) -> list:
         s = line.strip()
         if not s:
             flush_para()
+            continue
+        m = SCREENSHOT_PLACEHOLDER_RE.fullmatch(s)
+        if m:
+            flush_para()
+            cap = m.group(1).strip()
+            img_path = caption_to_image(cap)
+            if img_path:
+                img = RLImage(str(img_path), width=42 * mm, height=90 * mm)
+                story.append(img)
+                story.append(Paragraph(_escape_xml(f"图：{cap}"), caption_style))
+            else:
+                story.append(Paragraph(_escape_xml(f"（界面截图：{cap}）"), caption_style))
             continue
         if s.startswith("## "):
             flush_para()
@@ -173,36 +232,26 @@ def _header_footer(canvas, doc, font_name: str) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--source",
-        type=Path,
-        default=Path("doc/soft_registration/manual_content_zh.txt"),
-    )
-    parser.add_argument("--out-dir", type=Path, default=Path("dist/soft_registration/pdf"))
-    parser.add_argument(
-        "--copyright-holder-line",
-        type=str,
-        default="",
-        help="封面著作权人行全文，例如：著作权人（开发单位）：某某科技有限公司（须与申请表一致）。不传则使用脚本内默认占位。",
-    )
+    parser.add_argument("--source", type=Path, default=MANUAL_SOURCE)
+    parser.add_argument("--out-dir", type=Path, default=OUT_DOC_DIR)
+    parser.add_argument("--copyright-holder-line", type=str, default="")
     args = parser.parse_args()
 
-    root = Path(__file__).resolve().parents[1]
-    body_path = root / args.source
+    body_path = args.source
     if not body_path.is_file():
-        raise SystemExit(f"找不到正文文件: {body_path}")
+        raise SystemExit(f"找不到正文: {body_path}")
+    if not SCREENSHOTS_DIR.is_dir():
+        raise SystemExit(f"请先运行 generate_manual_screenshots.py，目录: {SCREENSHOTS_DIR}")
 
     font_path = _find_unicode_font()
     font_name = "DocManualFont"
     pdfmetrics.registerFont(TTFont(font_name, font_path))
 
-    out_dir = root / args.out_dir
+    out_dir = args.out_dir
     out_dir.mkdir(parents=True, exist_ok=True)
+    copyright_line = (args.copyright_holder_line or "").strip() or COPYRIGHT_HOLDER_LINE
 
-    cr = (args.copyright_holder_line or "").strip()
-    copyright_line = cr if cr else COPYRIGHT_HOLDER_LINE
     story = build_story(font_name, body_path, copyright_line)
-
     full_pdf = out_dir / "documentation_identification_full.pdf"
 
     def _on_page(canv, doc):
@@ -218,15 +267,12 @@ def main() -> None:
     )
     doc.build(story, onFirstPage=_on_page, onLaterPages=_on_page)
 
-    print("已生成全文 PDF:", full_pdf.resolve())
-    print("封面著作权人取自脚本 COPYRIGHT_HOLDER_LINE；若与申请表不一致，请改脚本或传 --copyright-holder-line 后重跑。")
-
-    # 尝试用 PyPDF2 裁剪前30后30页（可选依赖）
     try:
-        from PyPDF2 import PdfReader, PdfWriter
+        from pypdf import PdfReader, PdfWriter
 
         reader = PdfReader(str(full_pdf))
         n = len(reader.pages)
+        print("已生成:", full_pdf.resolve())
         print(f"全文共 {n} 页。")
         if n >= 60:
             w = PdfWriter()
@@ -237,11 +283,11 @@ def main() -> None:
             submit_path = out_dir / "documentation_identification_submit.pdf"
             with open(submit_path, "wb") as f:
                 w.write(f)
-            print("全文≥60页，已额外生成提交用（前30+后30）:", submit_path.resolve())
+            print("已生成提交用（前30+后30）:", submit_path.resolve())
         else:
-            print("全文不足60页：鉴别材料可提交 documentation_identification_full.pdf 完整文档。")
+            print("全文不足60页：提交 documentation_identification_full.pdf 完整文档即可。")
     except ImportError:
-        print("提示：安装 PyPDF2 后可自动生成「前30+后30」合并文件：pip install PyPDF2")
+        print("提示：安装 pypdf 后可自动生成前30+后30合并稿")
 
 
 if __name__ == "__main__":
