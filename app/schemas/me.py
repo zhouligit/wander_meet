@@ -86,6 +86,9 @@ class MyActivitiesData(BaseModel):
     total: int
     page: int
     pageSize: int
+    #: ``role=joined`` 时返回，与 ``total`` 一致：cityHallCount + eventCount == total
+    cityHallCount: int | None = None
+    eventCount: int | None = None
 
 
 class PremiumData(BaseModel):

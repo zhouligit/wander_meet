@@ -25,7 +25,11 @@ from app.services.user_cache import (
     set_cached_me_stats,
 )
 from app.services.chat_unread import get_chat_unread_counts, reset_chat_unread
-from app.services.city_hall import EVENT_ACTIVITY_KIND, is_city_hall_activity
+from app.services.city_hall import (
+    CITY_HALL_ACTIVITY_KIND,
+    EVENT_ACTIVITY_KIND,
+    is_city_hall_activity,
+)
 from app.models.activity import Activity
 from app.models.activity_enrollment import ActivityEnrollment
 from app.models.activity_message import ActivityMessage
@@ -287,7 +291,7 @@ async def my_activities(
     role: str = Query("joined", pattern="^(organized|joined|all)$"),
     timeScope: str = Query("all", pattern="^(all|past|upcoming)$"),
     page: int = Query(1, ge=1),
-    pageSize: int = Query(20, ge=1, le=50),
+    pageSize: int = Query(20, ge=1, le=100),
     db: AsyncSession = Depends(get_db_session),
     current_user: User = Depends(get_current_user),
 ) -> APIResponse[MyActivitiesData]:
@@ -338,6 +342,18 @@ async def my_activities(
                 .where(joined_filter)
             )
         ).scalar_one()
+        city_hall_count = (
+            await db.execute(
+                select(func.count(Activity.id))
+                .select_from(Activity)
+                .join(ActivityEnrollment, ActivityEnrollment.activity_id == Activity.id)
+                .where(
+                    joined_filter,
+                    Activity.activity_kind == CITY_HALL_ACTIVITY_KIND,
+                )
+            )
+        ).scalar_one()
+        event_count = int(total or 0) - int(city_hall_count or 0)
         rows = (
             (
                 await db.execute(
@@ -355,6 +371,15 @@ async def my_activities(
             .scalars()
             .all()
         )
+        data = MyActivitiesData(
+            list=[_my_activity_item(a, now_utc) for a in rows],
+            total=int(total or 0),
+            page=page,
+            pageSize=pageSize,
+            cityHallCount=int(city_hall_count or 0),
+            eventCount=event_count,
+        )
+        return APIResponse(data=data)
     else:
         enrolled_exists = exists(
             select(1).where(
@@ -385,7 +410,7 @@ async def my_activities(
 
     data = MyActivitiesData(
         list=[_my_activity_item(a, now_utc) for a in rows],
-        total=total,
+        total=int(total or 0),
         page=page,
         pageSize=pageSize,
     )
