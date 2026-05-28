@@ -10,7 +10,9 @@ from app.api.deps import get_current_user
 from app.db.session import get_db_session
 from app.services.activity_query import (
     effective_activity_status,
+    my_activities_all_order,
     my_activities_past_order,
+    my_activities_upcoming_order,
     past_activity_condition,
     upcoming_activity_condition,
 )
@@ -256,9 +258,13 @@ async def update_me(
     return APIResponse(data=build_me_data(user))
 
 
-def _my_activities_order(time_scope: str):
+def _my_activities_order(time_scope: str, now_utc: datetime):
     if time_scope == "past":
         return [my_activities_past_order()]
+    if time_scope == "upcoming":
+        return [my_activities_upcoming_order()]
+    if time_scope == "all":
+        return my_activities_all_order(now_utc)
     return [Activity.start_at.desc()]
 
 
@@ -310,7 +316,7 @@ async def my_activities(
                 await db.execute(
                     select(Activity)
                     .where(*scope)
-                    .order_by(*_my_activities_order(timeScope))
+                    .order_by(*_my_activities_order(timeScope, now_utc))
                     .offset((page - 1) * pageSize)
                     .limit(pageSize)
                 )
@@ -340,7 +346,7 @@ async def my_activities(
                     .where(joined_filter)
                     .order_by(
                         case((Activity.activity_kind == "city_hall", 0), else_=1),
-                        *_my_activities_order(timeScope),
+                        *_my_activities_order(timeScope, now_utc),
                     )
                     .offset((page - 1) * pageSize)
                     .limit(pageSize)
@@ -368,7 +374,7 @@ async def my_activities(
                 await db.execute(
                     select(Activity)
                     .where(*scope)
-                    .order_by(*_my_activities_order(timeScope))
+                    .order_by(*_my_activities_order(timeScope, now_utc))
                     .offset((page - 1) * pageSize)
                     .limit(pageSize)
                 )

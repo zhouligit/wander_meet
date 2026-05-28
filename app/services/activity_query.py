@@ -3,7 +3,7 @@
 from datetime import UTC, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import and_, false, func, or_
+from sqlalchemy import and_, case, false, func, or_
 from sqlalchemy.sql import ColumnElement
 
 from app.models.activity import Activity
@@ -44,6 +44,25 @@ def past_activity_condition(now_utc: datetime) -> ColumnElement[bool]:
 def my_activities_past_order():
     """历史活动按实际/计划结束时间倒序。"""
     return func.coalesce(Activity.ended_at, Activity.end_at, Activity.updated_at).desc()
+
+
+def my_activities_upcoming_order():
+    """未结束活动按开始时间正序（越近越靠上）。"""
+    return Activity.start_at.asc()
+
+
+def my_activities_all_order(now_utc: datetime):
+    """
+    「全部」：未结束在前（开始时间正序），已结束在后（结束时间倒序）。
+    """
+    is_past = past_activity_condition(now_utc)
+    past_key = func.coalesce(Activity.ended_at, Activity.end_at, Activity.updated_at)
+    # 已结束：用负时间戳实现倒序；未结束：开始时间正序
+    tie_break = case(
+        (is_past, -func.unix_timestamp(past_key)),
+        else_=func.unix_timestamp(Activity.start_at),
+    )
+    return [case((is_past, 1), else_=0).asc(), tie_break.asc()]
 
 
 def upcoming_activity_condition(now_utc: datetime) -> ColumnElement[bool]:
