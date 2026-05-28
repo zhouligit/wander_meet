@@ -11,6 +11,7 @@ from app.db.session import get_db_session
 from app.services.activity_query import (
     effective_activity_status,
     my_activities_all_order,
+    my_activities_event_desc_order,
     my_activities_past_order,
     my_activities_upcoming_order,
     past_activity_condition,
@@ -272,6 +273,25 @@ def _my_activities_order(time_scope: str, now_utc: datetime):
     return [Activity.start_at.desc()]
 
 
+def _joined_activities_order(
+    activity_kind: str | None,
+    time_scope: str,
+    now_utc: datetime,
+):
+    if activity_kind == CITY_HALL_ACTIVITY_KIND:
+        return [ActivityEnrollment.created_at.desc()]
+    if activity_kind == EVENT_ACTIVITY_KIND:
+        if time_scope == "past":
+            return [my_activities_past_order()]
+        if time_scope == "upcoming":
+            return [my_activities_upcoming_order()]
+        return [my_activities_event_desc_order()]
+    return [
+        case((Activity.activity_kind == CITY_HALL_ACTIVITY_KIND, 0), else_=1),
+        *_my_activities_order(time_scope, now_utc),
+    ]
+
+
 def _my_activity_item(a: Activity, now_utc: datetime) -> MyActivitiesItem:
     return MyActivitiesItem(
         activityId=f"act_{a.id}",
@@ -290,6 +310,11 @@ def _my_activity_item(a: Activity, now_utc: datetime) -> MyActivitiesItem:
 async def my_activities(
     role: str = Query("joined", pattern="^(organized|joined|all)$"),
     timeScope: str = Query("all", pattern="^(all|past|upcoming)$"),
+    activityKind: str | None = Query(
+        None,
+        pattern="^(city_hall|event)$",
+        description="joined 时按类型筛选：city_hall 城市大群 / event 普通活动",
+    ),
     page: int = Query(1, ge=1),
     pageSize: int = Query(20, ge=1, le=100),
     db: AsyncSession = Depends(get_db_session),
@@ -300,6 +325,7 @@ async def my_activities(
 
     - ``role``: ``joined`` 已报名 / ``organized`` 我发起 / ``all`` 二者合并（仅普通活动）
     - ``timeScope``: ``all`` 不限 / ``past`` 已结束 / ``upcoming`` 未结束
+    - ``activityKind``: ``joined`` 时可筛 ``city_hall`` / ``event``（分页列表用）
     """
     now_utc = datetime.now(UTC)
     time_filters: list = []
@@ -334,12 +360,26 @@ async def my_activities(
             ActivityEnrollment.status == "joined",
             *time_filters,
         )
-        total = (
+        if activityKind == CITY_HALL_ACTIVITY_KIND:
+            joined_filter = and_(
+                joined_filter,
+                Activity.activity_kind == CITY_HALL_ACTIVITY_KIND,
+            )
+        elif activityKind == EVENT_ACTIVITY_KIND:
+            joined_filter = and_(
+                joined_filter,
+                Activity.activity_kind == EVENT_ACTIVITY_KIND,
+            )
+        total_all = (
             await db.execute(
                 select(func.count(Activity.id))
                 .select_from(Activity)
                 .join(ActivityEnrollment, ActivityEnrollment.activity_id == Activity.id)
-                .where(joined_filter)
+                .where(
+                    ActivityEnrollment.user_id == current_user.id,
+                    ActivityEnrollment.status == "joined",
+                    *time_filters,
+                )
             )
         ).scalar_one()
         city_hall_count = (
@@ -348,22 +388,27 @@ async def my_activities(
                 .select_from(Activity)
                 .join(ActivityEnrollment, ActivityEnrollment.activity_id == Activity.id)
                 .where(
-                    joined_filter,
+                    ActivityEnrollment.user_id == current_user.id,
+                    ActivityEnrollment.status == "joined",
+                    *time_filters,
                     Activity.activity_kind == CITY_HALL_ACTIVITY_KIND,
                 )
             )
         ).scalar_one()
-        event_count = int(total or 0) - int(city_hall_count or 0)
+        event_count = int(total_all or 0) - int(city_hall_count or 0)
+        if activityKind == CITY_HALL_ACTIVITY_KIND:
+            list_total = int(city_hall_count or 0)
+        elif activityKind == EVENT_ACTIVITY_KIND:
+            list_total = event_count
+        else:
+            list_total = int(total_all or 0)
         rows = (
             (
                 await db.execute(
                     select(Activity)
                     .join(ActivityEnrollment, ActivityEnrollment.activity_id == Activity.id)
                     .where(joined_filter)
-                    .order_by(
-                        case((Activity.activity_kind == "city_hall", 0), else_=1),
-                        *_my_activities_order(timeScope, now_utc),
-                    )
+                    .order_by(*_joined_activities_order(activityKind, timeScope, now_utc))
                     .offset((page - 1) * pageSize)
                     .limit(pageSize)
                 )
@@ -373,7 +418,7 @@ async def my_activities(
         )
         data = MyActivitiesData(
             list=[_my_activity_item(a, now_utc) for a in rows],
-            total=int(total or 0),
+            total=list_total,
             page=page,
             pageSize=pageSize,
             cityHallCount=int(city_hall_count or 0),

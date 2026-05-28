@@ -51,6 +51,11 @@ def my_activities_upcoming_order():
     return Activity.start_at.asc()
 
 
+def my_activities_event_desc_order():
+    """普通活动按开始时间倒序（列表页「活动」区块）。"""
+    return Activity.start_at.desc()
+
+
 def my_activities_all_order(now_utc: datetime):
     """
     「全部」：未结束在前（开始时间正序），已结束在后（结束时间倒序）。
