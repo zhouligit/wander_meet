@@ -135,9 +135,9 @@ class Settings(BaseSettings):
     smtp_from: str = ""
     smtp_use_ssl: bool = True
     smtp_starttls: bool = False
-    email_reset_subject: str = "旅聚 WanderMeet 重置密码验证码"
+    email_reset_subject: str = "去旅聚 重置密码验证码"
     email_reset_body_template: str = (
-        "您正在重置旅聚账号密码，验证码为：{code}，{minutes} 分钟内有效。如非本人操作请忽略。"
+        "您正在重置去旅聚账号密码，验证码为：{code}，{minutes} 分钟内有效。如非本人操作请忽略。"
     )
 
     #: 微信小程序 AppID / AppSecret（``auth/wechat/login`` 调 jscode2session）

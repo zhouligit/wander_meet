@@ -32,10 +32,14 @@ ROUTES: list[tuple[str, str, bool]] = [
     ("detail.png", "/pages/activity-detail/activity-detail?id=1", False),
     ("publish.png", "/pages/publish/publish", False),
     ("discover.png", "/pages/discover/discover", False),
+    ("activity_list.png", "/pages/activity-list/activity-list", False),
     ("my_activities.png", "/pages/my-activity-list/my-activity-list", False),
+    ("hosted_list.png", "/pages/hosted-activity-list/hosted-activity-list", False),
+    ("location_picker.png", "/pages/location-picker/location-picker", False),
     ("messages.png", "/pages/messages/messages", False),
     ("profile.png", "/pages/profile/profile", False),
     ("privacy.png", "/pages/privacy-policy/privacy-policy", False),
+    ("community_rules.png", "/pages/community-rules/community-rules", False),
     ("entry.png", "/pages/home/home", False),
 ]
 
@@ -115,8 +119,38 @@ def capture_all(base_url: str, out_dir: Path) -> None:
     _postprocess(out_dir)
 
 
+def _add_phone_frame(path: Path) -> None:
+    """为软著材料加手机外框，体现完整手机端界面截图。"""
+    from PIL import Image, ImageDraw
+
+    img = Image.open(path).convert("RGB")
+    w, h = img.size
+    top_bar = max(12, h // 40)
+    side = max(10, w // 28)
+    out_w = w + side * 2
+    out_h = h + top_bar + side * 2
+    framed = Image.new("RGB", (out_w, out_h), "#0f172a")
+    framed.paste(img, (side, top_bar + side))
+    draw = ImageDraw.Draw(framed)
+    radius = max(18, w // 18)
+    draw.rounded_rectangle(
+        [4, 4, out_w - 5, out_h - 5],
+        radius=radius,
+        outline="#94a3b8",
+        width=3,
+    )
+    # 顶部状态栏示意
+    draw.rectangle([side + 8, side, out_w - side - 8, top_bar + side - 4], fill="#1e293b")
+    framed.save(path, quality=92)
+
+
 def _postprocess(out_dir: Path) -> None:
     from PIL import Image
+
+    for p in sorted(out_dir.glob("*.png")):
+        if p.name in ("tabbar.png", "flow.png", "detail_compare.png"):
+            continue
+        _add_phone_frame(p)
 
     home = out_dir / "home.png"
     if home.is_file():

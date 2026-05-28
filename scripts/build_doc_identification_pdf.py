@@ -29,7 +29,9 @@ from soft_reg_config import (
     OUT_DOC_DIR,
     SCREENSHOTS_DIR,
     SOFT_FULL_NAME,
+    SOFT_PLATFORM_LABEL,
     SOFT_SHORT_NAME,
+    page_header_left,
     VERSION,
 )
 
@@ -37,33 +39,43 @@ SCREENSHOT_PLACEHOLDER_RE = re.compile(r"【此处插入截图[：:](.+?)】")
 
 # 截图说明关键字 → 文件名（doc/soft_registration/screenshots/）
 CAPTION_TO_FILE: list[tuple[str, str]] = [
-    ("软件名称或小程序入口", "entry.png"),
-    ("小程序搜索", "entry.png"),
-    ("首页/引导", "home.png"),
-    ("首页活动列表", "home.png"),
+    ("App主界面首页", "home.png"),
+    ("App首页活动列表", "home.png"),
+    ("App首页", "home.png"),
+    ("App登录页", "login.png"),
     ("手机号登录", "login.png"),
-    ("完善资料", "onboarding.png"),
-    ("新手引导", "onboarding.png"),
-    ("活动详情", "detail.png"),
-    ("发布活动", "publish.png"),
-    ("发现页", "discover.png"),
-    ("我的活动列表", "my_activities.png"),
-    ("消息列表", "messages.png"),
-    ("聊天界面", "messages.png"),
-    ("我的页面", "profile.png"),
-    ("个人编辑", "profile.png"),
-    ("隐私政策", "privacy.png"),
-    ("社区规范", "privacy.png"),
+    ("App底部主导航", "tabbar.png"),
     ("底部主导航", "tabbar.png"),
+    ("App发现页", "discover.png"),
+    ("发现页", "discover.png"),
+    ("App全部活动列表", "activity_list.png"),
+    ("全部活动列表", "activity_list.png"),
+    ("App活动详情报名", "detail.png"),
+    ("App活动详情页", "detail.png"),
+    ("活动详情页", "detail.png"),
+    ("App发布活动表单", "publish.png"),
+    ("发布活动", "publish.png"),
+    ("App选择活动地点", "location_picker.png"),
+    ("选择活动地点", "location_picker.png"),
+    ("App发起活动列表", "hosted_list.png"),
+    ("发起活动列表", "hosted_list.png"),
+    ("App我的活动列表", "my_activities.png"),
+    ("我的活动列表", "my_activities.png"),
+    ("App消息列表", "messages.png"),
+    ("消息列表", "messages.png"),
+    ("App聊天界面", "chat.png"),
+    ("聊天界面", "chat.png"),
+    ("App我的页面", "profile.png"),
+    ("我的页面", "profile.png"),
+    ("App完善资料页", "onboarding.png"),
+    ("完善资料", "onboarding.png"),
+    ("App隐私政策页", "privacy.png"),
+    ("隐私政策", "privacy.png"),
+    ("App社区规范页", "community_rules.png"),
+    ("社区规范", "community_rules.png"),
+    ("App操作流程四联屏", "flow.png"),
+    ("操作流程四联屏", "flow.png"),
     ("四联屏", "flow.png"),
-    ("关键字段分区", "publish.png"),
-    ("消息列表分组", "messages.png"),
-    ("活动详情页对比", "detail_compare.png"),
-    ("修订记录", "home.png"),
-    ("分组或筛选", "messages.png"),
-    ("典型活动详情页对比", "detail_compare.png"),
-    ("聊天", "chat.png"),
-    ("主导航栏", "tabbar.png"),
 ]
 
 
@@ -171,7 +183,9 @@ def build_story(font_name: str, body_path: Path, copyright_line: str) -> list:
         Paragraph(
             _escape_xml(
                 f"说明：本文档为「{SOFT_SHORT_NAME}」软件著作权登记之文档鉴别材料。"
-                "正文配有客户端主要功能界面截图（与线上一致之 H5/小程序界面），与操作说明一一对应。"
+                f"登记软件全称：{SOFT_FULL_NAME}，版本号 {VERSION}。"
+                f"软件形态：移动终端 {SOFT_PLATFORM_LABEL} 客户端。"
+                "正文为图文对照操作手册，截图为 App 手机端完整界面。"
             ),
             body_style,
         )
@@ -200,9 +214,17 @@ def build_story(font_name: str, body_path: Path, copyright_line: str) -> list:
             cap = m.group(1).strip()
             img_path = caption_to_image(cap)
             if img_path:
-                img = RLImage(str(img_path), width=42 * mm, height=90 * mm)
+                # 手机端完整截图（390×844 比例）在 A4 上尽量放大展示
+                img = RLImage(str(img_path), width=52 * mm, height=112 * mm)
+                story.append(Spacer(1, 2 * mm))
                 story.append(img)
-                story.append(Paragraph(_escape_xml(f"图：{cap}"), caption_style))
+                story.append(
+                    Paragraph(
+                        _escape_xml(f"图：{cap}（{SOFT_PLATFORM_LABEL}手机端完整界面）"),
+                        caption_style,
+                    )
+                )
+                story.append(Spacer(1, 4 * mm))
             else:
                 story.append(Paragraph(_escape_xml(f"（界面截图：{cap}）"), caption_style))
             continue
@@ -225,7 +247,7 @@ def _header_footer(canvas, doc, font_name: str) -> None:
     canvas.setFont(font_name, 9)
     canvas.setFillColor(colors.HexColor("#334155"))
     w, h = A4
-    canvas.drawString(18 * mm, h - 14 * mm, f"{SOFT_FULL_NAME}  {VERSION}")
+    canvas.drawString(18 * mm, h - 14 * mm, page_header_left())
     canvas.drawRightString(w - 18 * mm, h - 14 * mm, f"第 {canvas.getPageNumber()} 页")
     canvas.restoreState()
 

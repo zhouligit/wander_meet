@@ -49,10 +49,10 @@ def _screen_base(title: str, subtitle: str = "") -> tuple[Image.Image, ImageDraw
 
 
 def shot_entry() -> None:
-    img, draw = _screen_base("微信 · 搜索", "小程序入口")
+    img, draw = _screen_base("搜索", "软件入口")
     draw.rounded_rectangle((16, 140, W - 16, 200), radius=12, fill="#ffffff", outline="#cbd5e1")
     draw.text((28, 168), f"搜索：{SOFT_SHORT_NAME}", fill="#334155", font=_font(16))
-    draw.text((28, 230), f"「{SOFT_SHORT_NAME}」小程序", fill="#0ea5e9", font=_font(18))
+    draw.text((28, 230), f"「{SOFT_SHORT_NAME}」", fill="#0ea5e9", font=_font(18))
     draw.text((28, 262), "同城活动 · 报名 · 群聊", fill="#94a3b8", font=_font(13))
     img.save(SCREENSHOTS_DIR / "entry.png")
 

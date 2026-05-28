@@ -27,8 +27,10 @@ from soft_reg_config import (
     PAGES_BACK,
     PAGES_FRONT,
     SOFT_FULL_NAME,
+    SOFT_SHORT_NAME,
     TOTAL_PROGRAM_PAGES,
     VERSION,
+    page_header_left,
 )
 
 PAGE_WIDTH, PAGE_HEIGHT = A4
@@ -114,7 +116,7 @@ def render_program_pdf(out_path: Path, pages: list[list[str]], font_name: str) -
 
         c.setFont(font_name, 9)
         c.setFillColor(colors.HexColor("#334155"))
-        c.drawString(LEFT_PT, PAGE_HEIGHT - TOP_PT + 6, f"{SOFT_FULL_NAME}  {VERSION}"[:96])
+        c.drawString(LEFT_PT, PAGE_HEIGHT - TOP_PT + 6, page_header_left()[:96])
         c.drawRightString(PAGE_WIDTH - RIGHT_PT, PAGE_HEIGHT - TOP_PT + 6, f"第 {page_no} 页")
 
         for row, raw in enumerate(code_lines):

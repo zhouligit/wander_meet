@@ -103,6 +103,16 @@ IHUYI_DEF_NEW = '''def send_sms_submit_sync(account: str, api_credential: str, m
     }'''
 
 
+_BRAND_PLACEHOLDER = "\uE000QJL\uE001"
+
+
+def normalize_product_brand(text: str) -> str:
+    """鉴别材料中与登记表一致：品牌「去旅聚」（避免源程序摘录仍出现旧称「旅聚」）。"""
+    text = text.replace("去旅聚", _BRAND_PLACEHOLDER)
+    text = text.replace("旅聚", "去旅聚")
+    return text.replace(_BRAND_PLACEHOLDER, "去旅聚")
+
+
 def sanitize(text: str) -> str:
     text = text.replace('mysql_password: str = "root"', 'mysql_credential: str = "【已隐去】"')
     text = text.replace('mysql_user: str = "root"', 'mysql_user: str = "【已隐去】"')
@@ -154,7 +164,7 @@ def sanitize(text: str) -> str:
     text = text.replace("secrets.", "_rnd.")
     text = text.replace("_jwt_secret_key", "_jwt_signing_key")
 
-    return text
+    return normalize_product_brand(text)
 
 
 def main() -> None:

@@ -39,13 +39,16 @@ from typing import Iterable
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from soft_reg_config import (  # noqa: E402
+    COPYRIGHT_HOLDER,
     DEFAULT_FRONTEND_SRC,
     DIST_DIR,
     LINES_PER_PAGE,
     PAGES_BACK,
     PAGES_FRONT,
     SOFT_FULL_NAME,
+    SOFT_SHORT_NAME,
     VERSION,
+    page_header_left,
 )
 
 SKIP_DIR_NAMES = {
@@ -134,11 +137,24 @@ def read_concat(
     return lines, index
 
 
+def source_preamble() -> list[str]:
+    """源程序合并文件开头标识（与申请表软件全称一致，不计入页眉行）。"""
+    bar = "# " + "=" * 72
+    return [
+        bar,
+        f"# 软件全称：{SOFT_FULL_NAME}",
+        f"# 软件简称：{SOFT_SHORT_NAME}",
+        f"# 版本号：{VERSION}",
+        f"# 著作权人：{COPYRIGHT_HOLDER}",
+        "# 本摘录为程序鉴别材料（前30页+后30页源程序，每页50行）",
+        bar,
+        "",
+    ]
+
+
 def paginate_with_header(
     chunk_lines: list[str],
     start_page_number: int,
-    soft_name: str,
-    version: str,
 ) -> list[str]:
     out: list[str] = []
     page = start_page_number
@@ -146,7 +162,7 @@ def paginate_with_header(
     n = len(chunk_lines)
     header_width = 76
     while i < n:
-        header = f"{soft_name} {version}".strip()
+        header = page_header_left()
         # 简化页眉：左全称版本，右页码（打印时再对齐）
         line1 = f"{header:<{header_width}}第 {page} 页"
         out.append(line1)
@@ -176,7 +192,7 @@ def main() -> None:
     out_dir = DIST_DIR
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    all_segments: list[str] = []
+    all_segments: list[str] = list(source_preamble())
     report_lines: list[str] = []
 
     # Backend
@@ -229,13 +245,13 @@ def main() -> None:
 
     (out_dir / "source_concat_full.txt").write_text("\n".join(all_segments) + "\n", encoding="utf-8")
     (out_dir / "source_front.txt").write_text(
-        "\n".join(paginate_with_header(front_chunk, 1, SOFT_FULL_NAME, VERSION)) + "\n",
+        "\n".join(paginate_with_header(front_chunk, 1)) + "\n",
         encoding="utf-8",
     )
     if back_chunk:
         start_page = PAGES_FRONT + 1
         (out_dir / "source_back.txt").write_text(
-            "\n".join(paginate_with_header(back_chunk, start_page, SOFT_FULL_NAME, VERSION)) + "\n",
+            "\n".join(paginate_with_header(back_chunk, start_page)) + "\n",
             encoding="utf-8",
         )
     else:
