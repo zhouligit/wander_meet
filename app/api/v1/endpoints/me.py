@@ -273,6 +273,15 @@ def _my_activities_order(time_scope: str, now_utc: datetime):
     return [Activity.start_at.desc()]
 
 
+def _organized_activities_order(time_scope: str, now_utc: datetime):
+    """我发起的活动列表：默认按开始时间倒序。"""
+    if time_scope == "past":
+        return [my_activities_past_order()]
+    if time_scope == "upcoming":
+        return [my_activities_upcoming_order()]
+    return [my_activities_event_desc_order()]
+
+
 def _joined_activities_order(
     activity_kind: str | None,
     time_scope: str,
@@ -346,7 +355,7 @@ async def my_activities(
                 await db.execute(
                     select(Activity)
                     .where(*scope)
-                    .order_by(*_my_activities_order(timeScope, now_utc))
+                    .order_by(*_organized_activities_order(timeScope, now_utc))
                     .offset((page - 1) * pageSize)
                     .limit(pageSize)
                 )
