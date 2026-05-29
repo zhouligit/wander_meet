@@ -290,6 +290,7 @@ curl -v http://127.0.0.1:8000/api/v1/wm/health/deps
 常见错误：
 
 - **502**：uvicorn 未启动或 `proxy_pass` 路径错误（应用路由前缀已是 `/api/v1/wm`，`proxy_pass` 用 `http://127.0.0.1:8000` 即可，不要多写一层路径）。
+- **413（上传头像/图片）**：Nginx 默认 `client_max_body_size` 仅 1m。在 HTTPS `server { }` 内加 `client_max_body_size 20m;` 后 `sudo nginx -t && sudo systemctl reload nginx`（见上文 §7 示例）。
 - **证书失败**：域名未解析、80 被占用、备案未通过导致外网访问异常。
 - **微信登录失败**：`WX_MP_APPID/SECRET` 错误或小程序未配置新 request 域名。
 

@@ -138,8 +138,21 @@ def put_avatar_bytes(*, user_id: int, data: bytes, content_type: str, file_ext: 
         client = _bos_client()
         client.put_object_from_string(bucket, key, data, content_type=ct)
     except Exception as exc:
-        logger.exception("BOS put_object failed user_id=%s key=%s", user_id, key)
-        raise HTTPException(status_code=502, detail="头像上传存储失败") from exc
+        logger.exception(
+            "BOS put_object failed user_id=%s bucket=%s endpoint=%s key=%s",
+            user_id,
+            bucket,
+            s.bos_endpoint.strip(),
+            key,
+        )
+        detail = "头像上传存储失败"
+        msg = str(exc)
+        if "bucket does not exist" in msg.lower() or "nosuchbucket" in msg.lower():
+            detail = (
+                "BOS Bucket 不存在或与 Endpoint 区域不匹配，"
+                "请检查 BOS_BUCKET、BOS_ENDPOINT 是否与控制台一致"
+            )
+        raise HTTPException(status_code=502, detail=detail) from exc
 
     return public_url_for_object_key(key, s)
 
