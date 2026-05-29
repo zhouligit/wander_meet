@@ -4,6 +4,7 @@ from __future__ import annotations
 import imghdr
 import logging
 import re
+import time
 from functools import lru_cache
 
 from fastapi import HTTPException
@@ -100,7 +101,8 @@ def validate_stored_avatar_url(url: str | None, settings: Settings | None = None
         raise HTTPException(status_code=400, detail="avatarUrl too long")
     s = _require_bos(settings)
     base = s.bos_public_base_url.rstrip("/")
-    if not u.startswith(base + "/"):
+    path_url = u.split("?", 1)[0]
+    if not path_url.startswith(base + "/"):
         raise HTTPException(status_code=400, detail="avatarUrl must use configured BOS public base")
     if not re.match(r"^https?://", u):
         raise HTTPException(status_code=400, detail="avatarUrl must be http(s) URL")
@@ -135,8 +137,16 @@ def put_avatar_bytes(*, user_id: int, data: bytes, content_type: str, file_ext: 
     bucket = s.bos_bucket.strip()
 
     try:
+        from baidubce.services.bos import canned_acl
+
         client = _bos_client()
-        client.put_object_from_string(bucket, key, data, content_type=ct)
+        client.put_object_from_string(
+            bucket,
+            key,
+            data,
+            content_type=ct,
+            user_headers={b"x-bce-acl": canned_acl.PUBLIC_READ},
+        )
     except Exception as exc:
         logger.exception(
             "BOS put_object failed user_id=%s bucket=%s endpoint=%s key=%s",
@@ -154,7 +164,9 @@ def put_avatar_bytes(*, user_id: int, data: bytes, content_type: str, file_ext: 
             )
         raise HTTPException(status_code=502, detail=detail) from exc
 
-    return public_url_for_object_key(key, s)
+    public = public_url_for_object_key(key, s)
+    # 同一路径覆盖上传时，小程序 <image> 会强缓存旧图，必须带版本参数
+    return f"{public}?v={int(time.time())}"
 
 
 def create_avatar_presigned_put_url(*, user_id: int, file_ext: str) -> dict[str, str]:
