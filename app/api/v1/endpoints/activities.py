@@ -20,6 +20,7 @@ from app.services.activity_enroll import enroll_user_in_activity
 from app.services.activity_category import normalize_activity_category
 from app.services.city_hall import EVENT_ACTIVITY_KIND, is_city_hall_activity
 from app.services.contact_content_filter import contact_text_blocked_reason
+from app.services.bos_storage import BosNotConfiguredError, validate_stored_chat_image_url
 from app.db.session import get_db_session
 from app.services.activity_lifecycle import mark_activity_ended
 from app.services.chat_unread import increment_chat_unread_for_message
@@ -908,6 +909,12 @@ async def send_message(
         raise HTTPException(status_code=400, detail="text is required for text message")
     if payload.msgType == "image" and not payload.imageUrl:
         raise HTTPException(status_code=400, detail="imageUrl is required for image message")
+    image_url: str | None = None
+    if payload.msgType == "image":
+        try:
+            image_url = validate_stored_chat_image_url(payload.imageUrl, current_user.id)
+        except BosNotConfiguredError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
     if payload.msgType == "text":
         blocked = contact_text_blocked_reason(payload.text)
         if blocked:
@@ -918,7 +925,7 @@ async def send_message(
         sender_id=current_user.id,
         msg_type=payload.msgType,
         text_content=payload.text if payload.msgType == "text" else None,
-        image_url=payload.imageUrl if payload.msgType == "image" else None,
+        image_url=image_url,
     )
     db.add(message)
     await db.commit()

@@ -44,6 +44,7 @@ from app.schemas.datetime_iso import datetime_to_rfc3339_utc_z
 from app.schemas.me import (
     AvatarUploadUrlData,
     AvatarUploadUrlRequest,
+    ChatImageUploadData,
     MeData,
     MyActivitiesData,
     MyActivitiesItem,
@@ -77,6 +78,7 @@ from app.services.bos_storage import (
     create_avatar_presigned_put_url,
     normalize_avatar_ext,
     put_avatar_bytes,
+    put_chat_image_bytes,
     validate_stored_avatar_url,
 )
 from app.db.session import redis_client
@@ -708,6 +710,29 @@ async def upload_avatar_file(
         logger.warning("invalidate_user_cache failed user_id=%s", user.id, exc_info=True)
 
     return APIResponse(data=build_me_data(user))
+
+
+@router.post("/chat-images")
+async def upload_chat_image_file(
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+) -> APIResponse[ChatImageUploadData]:
+    """聊天图片：multipart 上传到 BOS，发消息时在 imageUrl 携带返回值。"""
+    body = await file.read()
+    file_ext = None
+    if file.filename and "." in file.filename:
+        file_ext = file.filename.rsplit(".", 1)[-1]
+    try:
+        public_url = await asyncio.to_thread(
+            put_chat_image_bytes,
+            user_id=current_user.id,
+            data=body,
+            content_type=file.content_type or "image/jpeg",
+            file_ext=file_ext,
+        )
+    except BosNotConfiguredError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    return APIResponse(data=ChatImageUploadData(imageUrl=public_url))
 
 
 @router.get("/place-activity-alerts")

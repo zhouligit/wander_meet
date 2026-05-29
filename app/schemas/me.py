@@ -72,6 +72,10 @@ class AvatarUploadUrlData(BaseModel):
     headers: dict[str, str] = Field(default_factory=dict)
 
 
+class ChatImageUploadData(BaseModel):
+    imageUrl: str
+
+
 class MyActivitiesItem(BaseModel):
     activityId: str
     #: ``event`` 普通活动；``city_hall`` 城市大群（默认兼容旧客户端）

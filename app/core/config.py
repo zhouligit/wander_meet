@@ -149,6 +149,7 @@ class Settings(BaseSettings):
     #: 公网访问根 URL（Bucket 域名或 CDN），如 https://your-bucket.bj.bcebos.com
     bos_public_base_url: str = ""
     bos_avatar_max_bytes: int = 5 * 1024 * 1024
+    bos_chat_image_max_bytes: int = 8 * 1024 * 1024
     bos_presign_expires_seconds: int = 1800
 
     #: 微信小程序 AppID / AppSecret（``auth/wechat/login`` 调 jscode2session）

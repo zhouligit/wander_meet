@@ -1,10 +1,11 @@
-"""百度 BOS 对象存储（头像等用户资源）。"""
+"""百度 BOS 对象存储（头像、聊天图片等用户资源）。"""
 from __future__ import annotations
 
 import imghdr
 import logging
 import re
 import time
+import uuid
 from functools import lru_cache
 
 from fastapi import HTTPException
@@ -66,7 +67,9 @@ def _bos_client():
     return BosClient(config)
 
 
-def normalize_avatar_ext(file_ext: str | None, content_type: str | None = None) -> str:
+def normalize_image_ext(
+    file_ext: str | None, content_type: str | None = None, *, kind: str = "图片"
+) -> str:
     ext = (file_ext or "").strip().lower().lstrip(".")
     if ext == "jpeg":
         ext = "jpg"
@@ -76,12 +79,21 @@ def normalize_avatar_ext(file_ext: str | None, content_type: str | None = None) 
     mapped = _CONTENT_TYPE_TO_EXT.get(ct)
     if mapped:
         return mapped
-    raise HTTPException(status_code=400, detail="仅支持 jpg、png、webp 头像")
+    raise HTTPException(status_code=400, detail=f"仅支持 jpg、png、webp {kind}")
+
+
+def normalize_avatar_ext(file_ext: str | None, content_type: str | None = None) -> str:
+    return normalize_image_ext(file_ext, content_type, kind="头像")
 
 
 def avatar_object_key(user_id: int, ext: str) -> str:
     safe_ext = normalize_avatar_ext(ext)
     return f"wm/avatar/u_{user_id}/avatar.{safe_ext}"
+
+
+def chat_image_object_key(user_id: int, ext: str) -> str:
+    safe_ext = normalize_image_ext(ext)
+    return f"wm/chat/u_{user_id}/{uuid.uuid4().hex}.{safe_ext}"
 
 
 def public_url_for_object_key(object_key: str, settings: Settings | None = None) -> str:
@@ -106,6 +118,25 @@ def validate_stored_avatar_url(url: str | None, settings: Settings | None = None
         raise HTTPException(status_code=400, detail="avatarUrl must use configured BOS public base")
     if not re.match(r"^https?://", u):
         raise HTTPException(status_code=400, detail="avatarUrl must be http(s) URL")
+    return u
+
+
+def validate_stored_chat_image_url(
+    url: str, user_id: int, settings: Settings | None = None
+) -> str:
+    u = url.strip()
+    if not u:
+        raise HTTPException(status_code=400, detail="imageUrl is required")
+    if len(u) > 512:
+        raise HTTPException(status_code=400, detail="imageUrl too long")
+    s = _require_bos(settings)
+    base = s.bos_public_base_url.rstrip("/")
+    path_url = u.split("?", 1)[0]
+    expected_prefix = f"{base}/wm/chat/u_{user_id}/"
+    if not path_url.startswith(expected_prefix):
+        raise HTTPException(status_code=400, detail="imageUrl must be your uploaded chat image")
+    if not re.match(r"^https?://", u):
+        raise HTTPException(status_code=400, detail="imageUrl must be http(s) URL")
     return u
 
 
@@ -166,6 +197,54 @@ def put_avatar_bytes(*, user_id: int, data: bytes, content_type: str, file_ext: 
 
     public = public_url_for_object_key(key, s)
     # 同一路径覆盖上传时，小程序 <image> 会强缓存旧图，必须带版本参数
+    return f"{public}?v={int(time.time())}"
+
+
+def put_chat_image_bytes(*, user_id: int, data: bytes, content_type: str, file_ext: str | None = None) -> str:
+    s = _require_bos()
+    if not data:
+        raise HTTPException(status_code=400, detail="empty file")
+    if len(data) > s.bos_chat_image_max_bytes:
+        raise HTTPException(status_code=400, detail="chat image file too large")
+
+    sniffed = sniff_image_content_type(data)
+    if not sniffed:
+        raise HTTPException(status_code=400, detail="invalid image file")
+
+    ext = normalize_image_ext(file_ext, sniffed)
+    ct = _EXT_TO_CONTENT_TYPE.get(ext, sniffed)
+    key = chat_image_object_key(user_id, ext)
+    bucket = s.bos_bucket.strip()
+
+    try:
+        from baidubce.services.bos import canned_acl
+
+        client = _bos_client()
+        client.put_object_from_string(
+            bucket,
+            key,
+            data,
+            content_type=ct,
+            user_headers={b"x-bce-acl": canned_acl.PUBLIC_READ},
+        )
+    except Exception as exc:
+        logger.exception(
+            "BOS put_object failed user_id=%s bucket=%s endpoint=%s key=%s",
+            user_id,
+            bucket,
+            s.bos_endpoint.strip(),
+            key,
+        )
+        detail = "聊天图片上传存储失败"
+        msg = str(exc)
+        if "bucket does not exist" in msg.lower() or "nosuchbucket" in msg.lower():
+            detail = (
+                "BOS Bucket 不存在或与 Endpoint 区域不匹配，"
+                "请检查 BOS_BUCKET、BOS_ENDPOINT 是否与控制台一致"
+            )
+        raise HTTPException(status_code=502, detail=detail) from exc
+
+    public = public_url_for_object_key(key, s)
     return f"{public}?v={int(time.time())}"
 
 
