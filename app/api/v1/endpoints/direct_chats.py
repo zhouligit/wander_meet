@@ -17,7 +17,8 @@ from app.models.user import User
 from app.schemas.activity import ChatMessageSender, SendMessageRequest
 from app.schemas.common import APIResponse
 from app.services.contact_content_filter import contact_text_blocked_reason
-from app.services.bos_storage import BosNotConfiguredError, validate_stored_chat_image_url
+from app.services.chat_message_payload import build_message_row_content
+from app.services.chat_stickers import message_content_fields
 from app.services.dm_relationship import (
     either_blocked,
     get_thread_by_users,
@@ -510,8 +511,7 @@ async def list_direct_messages(
             threadId=f"dmthr_{tid}",
             sender=_sender(user),
             msgType=msg.msg_type,
-            text=msg.text_content,
-            imageUrl=msg.image_url,
+            **message_content_fields(msg.msg_type, msg.text_content, msg.image_url),
             createdAt=msg.created_at,
         )
         for msg, user in rows
@@ -533,28 +533,13 @@ async def send_direct_message(
         raise HTTPException(status_code=404, detail="Thread not found")
     await _assert_thread_member(thread, current_user.id)
 
-    if payload.msgType not in {"text", "image"}:
-        raise HTTPException(status_code=400, detail="Unsupported msgType")
-    if payload.msgType == "text" and not payload.text:
-        raise HTTPException(status_code=400, detail="text is required for text message")
-    if payload.msgType == "image" and not payload.imageUrl:
-        raise HTTPException(status_code=400, detail="imageUrl is required for image message")
-    image_url: str | None = None
-    if payload.msgType == "image":
-        try:
-            image_url = validate_stored_chat_image_url(payload.imageUrl, current_user.id)
-        except BosNotConfiguredError as exc:
-            raise HTTPException(status_code=503, detail=str(exc)) from exc
-    if payload.msgType == "text":
-        blocked = contact_text_blocked_reason(payload.text)
-        if blocked:
-            raise HTTPException(status_code=400, detail=blocked)
+    msg_type, text_content, image_url = build_message_row_content(payload, current_user.id)
 
     msg = DirectMessage(
         thread_id=tid,
         sender_id=current_user.id,
-        msg_type=payload.msgType,
-        text_content=payload.text if payload.msgType == "text" else None,
+        msg_type=msg_type,
+        text_content=text_content,
         image_url=image_url,
     )
     db.add(msg)
@@ -568,8 +553,7 @@ async def send_direct_message(
             threadId=f"dmthr_{tid}",
             sender=_sender(current_user),
             msgType=msg.msg_type,
-            text=msg.text_content,
-            imageUrl=msg.image_url,
+            **message_content_fields(msg.msg_type, msg.text_content, msg.image_url),
             createdAt=msg.created_at or datetime.now(UTC),
         )
     )

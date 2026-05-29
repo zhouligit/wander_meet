@@ -53,6 +53,7 @@ class DirectMessageItem(BaseModel):
     msgType: str
     text: str | None = None
     imageUrl: str | None = None
+    stickerId: str | None = None
     createdAt: datetime
 
     @field_serializer("createdAt")

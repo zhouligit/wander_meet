@@ -20,7 +20,8 @@ from app.services.activity_enroll import enroll_user_in_activity
 from app.services.activity_category import normalize_activity_category
 from app.services.city_hall import EVENT_ACTIVITY_KIND, is_city_hall_activity
 from app.services.contact_content_filter import contact_text_blocked_reason
-from app.services.bos_storage import BosNotConfiguredError, validate_stored_chat_image_url
+from app.services.chat_message_payload import build_message_row_content
+from app.services.chat_stickers import message_content_fields
 from app.db.session import get_db_session
 from app.services.activity_lifecycle import mark_activity_ended
 from app.services.chat_unread import increment_chat_unread_for_message
@@ -883,8 +884,7 @@ async def get_messages(
                 avatarUrl=user.avatar_url,
             ),
             msgType=msg.msg_type,
-            text=msg.text_content,
-            imageUrl=msg.image_url,
+            **message_content_fields(msg.msg_type, msg.text_content, msg.image_url),
             createdAt=msg.created_at,
         )
         for msg, user in rows
@@ -903,28 +903,13 @@ async def send_message(
     activity_pk = _parse_activity_id(activity_id)
     await _assert_member_or_organizer(activity_pk, current_user.id, db)
 
-    if payload.msgType not in {"text", "image"}:
-        raise HTTPException(status_code=400, detail="Unsupported msgType")
-    if payload.msgType == "text" and not payload.text:
-        raise HTTPException(status_code=400, detail="text is required for text message")
-    if payload.msgType == "image" and not payload.imageUrl:
-        raise HTTPException(status_code=400, detail="imageUrl is required for image message")
-    image_url: str | None = None
-    if payload.msgType == "image":
-        try:
-            image_url = validate_stored_chat_image_url(payload.imageUrl, current_user.id)
-        except BosNotConfiguredError as exc:
-            raise HTTPException(status_code=503, detail=str(exc)) from exc
-    if payload.msgType == "text":
-        blocked = contact_text_blocked_reason(payload.text)
-        if blocked:
-            raise HTTPException(status_code=400, detail=blocked)
+    msg_type, text_content, image_url = build_message_row_content(payload, current_user.id)
 
     message = ActivityMessage(
         activity_id=activity_pk,
         sender_id=current_user.id,
-        msg_type=payload.msgType,
-        text_content=payload.text if payload.msgType == "text" else None,
+        msg_type=msg_type,
+        text_content=text_content,
         image_url=image_url,
     )
     db.add(message)
@@ -945,8 +930,7 @@ async def send_message(
                 avatarUrl=current_user.avatar_url,
             ),
             msgType=message.msg_type,
-            text=message.text_content,
-            imageUrl=message.image_url,
+            **message_content_fields(message.msg_type, message.text_content, message.image_url),
             createdAt=message.created_at or datetime.now(UTC),
         )
     )
