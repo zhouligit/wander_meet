@@ -21,7 +21,7 @@ from reportlab.lib.units import mm
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.platypus import Image as RLImage
-from reportlab.platypus import PageBreak, Paragraph, SimpleDocTemplate, Spacer
+from reportlab.platypus import KeepTogether, PageBreak, Paragraph, SimpleDocTemplate, Spacer
 
 from soft_reg_config import (
     COPYRIGHT_HOLDER_LINE,
@@ -44,8 +44,9 @@ CAPTION_TO_FILE: list[tuple[str, str]] = [
     ("App首页", "home.png"),
     ("App登录页", "login.png"),
     ("手机号登录", "login.png"),
-    ("App底部主导航", "tabbar.png"),
-    ("底部主导航", "tabbar.png"),
+    ("App首页含底部导航", "home.png"),
+    ("App底部主导航", "home.png"),
+    ("底部主导航", "home.png"),
     ("App发现页", "discover.png"),
     ("发现页", "discover.png"),
     ("App全部活动列表", "activity_list.png"),
@@ -78,6 +79,13 @@ CAPTION_TO_FILE: list[tuple[str, str]] = [
     ("四联屏", "flow.png"),
 ]
 
+# 预审：整屏竖图尽量放大；合成图（flow）单独限制高度
+MAX_SCREENSHOT_WIDTH_MM = 59
+MAX_SCREENSHOT_HEIGHT_MM = 210
+MAX_FLOW_WIDTH_MM = 59
+MAX_FLOW_HEIGHT_MM = 120
+PDF_BITMAP_DPI = 200
+
 
 def _find_unicode_font() -> str:
     import os
@@ -109,6 +117,44 @@ def caption_to_image(caption: str) -> Path | None:
                 return p
     fallback = SCREENSHOTS_DIR / "home.png"
     return fallback if fallback.is_file() else None
+
+
+def _fit_screenshot_image(
+    img_path: Path,
+    *,
+    max_width_mm: float = MAX_SCREENSHOT_WIDTH_MM,
+    max_height_mm: float = MAX_SCREENSHOT_HEIGHT_MM,
+) -> RLImage:
+    """等比嵌入 PDF：禁止固定宽高拉伸；按目标 DPI 重采样以保证界面文字清晰。"""
+    from io import BytesIO
+
+    from PIL import Image as PILImage
+
+    with PILImage.open(img_path) as pil:
+        pil = pil.convert("RGB")
+        iw, ih = pil.size
+        if iw <= 0 or ih <= 0:
+            return RLImage(str(img_path), width=max_width_mm * mm, kind="proportional")
+
+        max_w = max_width_mm * mm
+        max_h = max_height_mm * mm
+        scale = min(max_w / iw, max_h / ih)
+        disp_w = iw * scale
+        disp_h = ih * scale
+
+        px_w = max(1, int(disp_w / 72 * PDF_BITMAP_DPI))
+        px_h = max(1, int(disp_h / 72 * PDF_BITMAP_DPI))
+        if (px_w, px_h) != (iw, ih):
+            pil = pil.resize((px_w, px_h), PILImage.Resampling.LANCZOS)
+
+        buf = BytesIO()
+        pil.save(buf, format="PNG", compress_level=3)
+        buf.seek(0)
+        return RLImage(buf, width=disp_w, height=disp_h)
+
+
+def _is_flow_image(img_path: Path) -> bool:
+    return img_path.name == "flow.png"
 
 
 def build_story(font_name: str, body_path: Path, copyright_line: str) -> list:
@@ -185,7 +231,8 @@ def build_story(font_name: str, body_path: Path, copyright_line: str) -> list:
                 f"说明：本文档为「{SOFT_SHORT_NAME}」软件著作权登记之文档鉴别材料。"
                 f"登记软件全称：{SOFT_FULL_NAME}，版本号 {VERSION}。"
                 f"软件形态：移动终端 {SOFT_PLATFORM_LABEL} 客户端。"
-                "正文为图文对照操作手册，截图为 App 手机端完整界面。"
+                "正文为图文对照操作手册，截图为 App 手机端原始整屏界面，"
+                "PDF 内按原始宽高比嵌入，未做拉伸处理。"
             ),
             body_style,
         )
@@ -214,17 +261,26 @@ def build_story(font_name: str, body_path: Path, copyright_line: str) -> list:
             cap = m.group(1).strip()
             img_path = caption_to_image(cap)
             if img_path:
-                # 手机端完整截图（390×844 比例）在 A4 上尽量放大展示
-                img = RLImage(str(img_path), width=52 * mm, height=112 * mm)
-                story.append(Spacer(1, 2 * mm))
-                story.append(img)
-                story.append(
-                    Paragraph(
-                        _escape_xml(f"图：{cap}（{SOFT_PLATFORM_LABEL}手机端完整界面）"),
-                        caption_style,
+                if _is_flow_image(img_path):
+                    img = _fit_screenshot_image(
+                        img_path,
+                        max_width_mm=MAX_FLOW_WIDTH_MM,
+                        max_height_mm=MAX_FLOW_HEIGHT_MM,
                     )
+                else:
+                    img = _fit_screenshot_image(img_path)
+                block = KeepTogether(
+                    [
+                        Spacer(1, 2 * mm),
+                        img,
+                        Paragraph(
+                            _escape_xml(f"图：{cap}（{SOFT_PLATFORM_LABEL}手机端原始界面截图）"),
+                            caption_style,
+                        ),
+                        Spacer(1, 4 * mm),
+                    ]
                 )
-                story.append(Spacer(1, 4 * mm))
+                story.append(block)
             else:
                 story.append(Paragraph(_escape_xml(f"（界面截图：{cap}）"), caption_style))
             continue

@@ -10,8 +10,8 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_FRONTEND_SRC = (REPO_ROOT.parent / "lv_ju" / "travel-together" / "src").resolve()
 
-# 与申请表「软件全称」一致（App 类，全称以 App 结尾）
-SOFT_FULL_NAME = "去旅聚户外活动报名与社交App软件"
+# 与申请表「软件全称」一致（App 类，全称以 App 结尾，勿再加「软件」后缀）
+SOFT_FULL_NAME = "去旅聚户外活动报名与社交App"
 SOFT_SHORT_NAME = "去旅聚"
 SOFT_PLATFORM_LABEL = "App"
 VERSION = "V1.0"

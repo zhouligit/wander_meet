@@ -20,7 +20,7 @@ def main() -> None:
     run([PY, str(SCRIPTS / "soft_registration_export.py")])
     run([PY, str(SCRIPTS / "sanitize_soft_registration_outputs.py")])
     run([PY, str(SCRIPTS / "build_soft_registration_pdf.py")])
-    run([PY, str(SCRIPTS / "capture_h5_screenshots.py")])
+    run([PY, str(SCRIPTS / "capture_h5_screenshots.py")])  # 默认原始截图，不加外框
     run([PY, str(SCRIPTS / "build_doc_identification_pdf.py")])
     print("\n完成。递交文件：")
     print(" - doc/soft_registration/program_identification_material.pdf（60页源程序）")

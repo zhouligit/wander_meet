@@ -71,7 +71,7 @@ def _wait_ready(page, ms: int = 2500) -> None:
         pass
 
 
-def capture_all(base_url: str, out_dir: Path) -> None:
+def capture_all(base_url: str, out_dir: Path, *, add_frame: bool) -> None:
     try:
         from playwright.sync_api import sync_playwright
     except ImportError as e:
@@ -116,7 +116,7 @@ def capture_all(base_url: str, out_dir: Path) -> None:
 
         browser.close()
 
-    _postprocess(out_dir)
+    _postprocess(out_dir, add_frame=add_frame)
 
 
 def _add_phone_frame(path: Path) -> None:
@@ -144,33 +144,47 @@ def _add_phone_frame(path: Path) -> None:
     framed.save(path, quality=92)
 
 
-def _postprocess(out_dir: Path) -> None:
+def _postprocess(out_dir: Path, *, add_frame: bool) -> None:
     from PIL import Image
 
-    for p in sorted(out_dir.glob("*.png")):
-        if p.name in ("tabbar.png", "flow.png", "detail_compare.png"):
-            continue
-        _add_phone_frame(p)
+    if add_frame:
+        for p in sorted(out_dir.glob("*.png")):
+            if p.name in ("tabbar.png", "flow.png", "detail_compare.png"):
+                continue
+            _add_phone_frame(p)
 
     home = out_dir / "home.png"
     if home.is_file():
-        img = Image.open(home)
-        w, h = img.size
-        tab = img.crop((0, int(h * 0.88), w, h))
-        tab.save(out_dir / "tabbar.png")
+        # 保留 tabbar.png 供旧材料兼容：复制完整首页，勿再裁切窄条（PDF 内易变形）
+        shutil.copy2(home, out_dir / "tabbar.png")
 
     parts = []
+    ref = out_dir / "home.png"
+    ref_size = None
+    if ref.is_file():
+        ref_im = Image.open(ref)
+        ref_size = ref_im.size
+        ref_im.close()
+
     for name in ("home.png", "detail.png", "messages.png"):
         p = out_dir / name
         if p.is_file():
-            im = Image.open(p).resize((195, 422))
-            parts.append(im)
-    if len(parts) >= 3:
-        flow = Image.new("RGB", (390, 844), "#f8fafc")
+            im = Image.open(p).convert("RGB")
+            if ref_size and im.size != ref_size:
+                im = im.resize(ref_size, Image.Resampling.LANCZOS)
+            w, h = im.size
+            half_w, half_h = w // 2, h // 2
+            parts.append(im.resize((half_w, half_h), Image.Resampling.LANCZOS))
+            im.close()
+    if len(parts) >= 3 and ref_size:
+        w, h = ref_size
+        flow = Image.new("RGB", (w, h), "#f8fafc")
         flow.paste(parts[0], (0, 0))
-        flow.paste(parts[1], (195, 0))
-        flow.paste(parts[2], (0, 422))
-        flow.save(out_dir / "flow.png")
+        flow.paste(parts[1], (w // 2, 0))
+        flow.paste(parts[2], (0, h // 2))
+        flow.save(out_dir / "flow.png", compress_level=3)
+        for p in parts:
+            p.close()
 
     # 消息列表与聊天：手册「消息列表与聊天」用 messages；对比图复用 detail
     detail = out_dir / "detail.png"
@@ -209,6 +223,11 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--base-url", default="http://127.0.0.1:5173")
     parser.add_argument("--no-server", action="store_true", help="不自动启动 npm dev:h5")
+    parser.add_argument(
+        "--with-frame",
+        action="store_true",
+        help="为截图加手机外框（默认不加，递交文档鉴别材料用原始界面截图）",
+    )
     args = parser.parse_args()
 
     browsers = REPO_ROOT / ".pw-browsers"
@@ -219,7 +238,7 @@ def main() -> None:
     if not args.no_server:
         proc = start_dev_server()
     try:
-        capture_all(args.base_url, SCREENSHOTS_DIR)
+        capture_all(args.base_url, SCREENSHOTS_DIR, add_frame=args.with_frame)
         print("\n完成。截图目录:", SCREENSHOTS_DIR.resolve())
     finally:
         if proc:
