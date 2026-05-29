@@ -60,6 +60,18 @@ class UpdateMeRequest(BaseModel):
     completeOnboarding: bool | None = None
 
 
+class AvatarUploadUrlRequest(BaseModel):
+    contentType: str | None = None
+    fileExt: str
+
+
+class AvatarUploadUrlData(BaseModel):
+    uploadUrl: str
+    objectKey: str
+    publicUrl: str
+    headers: dict[str, str] = Field(default_factory=dict)
+
+
 class MyActivitiesItem(BaseModel):
     activityId: str
     #: ``event`` 普通活动；``city_hall`` 城市大群（默认兼容旧客户端）

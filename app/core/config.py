@@ -140,6 +140,17 @@ class Settings(BaseSettings):
         "您正在重置去旅聚账号密码，验证码为：{code}，{minutes} 分钟内有效。如非本人操作请忽略。"
     )
 
+    #: 百度 BOS（头像等用户资源，见 app/services/bos_storage.py）
+    bos_access_key_id: str = ""
+    bos_secret_access_key: str = ""
+    bos_bucket: str = ""
+    #: 如 https://bj.bcebos.com 或 https://bucket-name.bj.bcebos.com
+    bos_endpoint: str = "https://bj.bcebos.com"
+    #: 公网访问根 URL（Bucket 域名或 CDN），如 https://your-bucket.bj.bcebos.com
+    bos_public_base_url: str = ""
+    bos_avatar_max_bytes: int = 5 * 1024 * 1024
+    bos_presign_expires_seconds: int = 1800
+
     #: 微信小程序 AppID / AppSecret（``auth/wechat/login`` 调 jscode2session）
     wx_mp_appid: str = ""
     wx_mp_appsecret: str = ""

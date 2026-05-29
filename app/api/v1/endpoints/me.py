@@ -1,7 +1,8 @@
+import asyncio
 import logging
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from sqlalchemy import and_, case, exists, func, or_, select
 from sqlalchemy.exc import OperationalError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -41,6 +42,8 @@ from app.models.user_chat_read import UserChatRead
 from app.schemas.common import APIResponse
 from app.schemas.datetime_iso import datetime_to_rfc3339_utc_z
 from app.schemas.me import (
+    AvatarUploadUrlData,
+    AvatarUploadUrlRequest,
     MeData,
     MyActivitiesData,
     MyActivitiesItem,
@@ -69,6 +72,13 @@ from app.services.email_validation import mask_email
 from app.services.user_phone_bind import bind_phone_to_user, mask_user_phone, user_has_phone
 from app.services.user_profile_fields import bio_from_user, tags_from_user
 from app.services.wechat_miniapp import WechatLoginError, get_phone_number_from_code
+from app.services.bos_storage import (
+    BosNotConfiguredError,
+    create_avatar_presigned_put_url,
+    normalize_avatar_ext,
+    put_avatar_bytes,
+    validate_stored_avatar_url,
+)
 from app.db.session import redis_client
 
 router = APIRouter(prefix="/me", tags=["me"])
@@ -193,7 +203,10 @@ async def update_me(
             raise HTTPException(status_code=400, detail="nickname is required when provided")
         user.nickname = nn[:32]
     if payload.avatarUrl is not None:
-        user.avatar_url = payload.avatarUrl
+        if (payload.avatarUrl or "").strip():
+            user.avatar_url = validate_stored_avatar_url(payload.avatarUrl)
+        else:
+            user.avatar_url = None
     if payload.bio is not None:
         b = (payload.bio or "").strip()
         user.bio = b[:2000] if b else None
@@ -641,18 +654,60 @@ async def mark_chat_read(
 
 @router.post("/avatar/upload-url")
 async def avatar_upload_url(
-    contentType: str,
-    fileExt: str,
-    _: User = Depends(get_current_user),
-) -> APIResponse[dict]:
-    # v0.1 placeholder for OSS pre-signed upload integration.
-    return APIResponse(
-        data={
-            "uploadUrl": "https://upload.wandermeet.local/placeholder",
-            "objectKey": f"wm/avatar/tmp/avatar.{fileExt}",
-            "headers": {"Content-Type": contentType},
-        }
-    )
+    payload: AvatarUploadUrlRequest,
+    current_user: User = Depends(get_current_user),
+) -> APIResponse[AvatarUploadUrlData]:
+    try:
+        ext = normalize_avatar_ext(payload.fileExt, payload.contentType)
+        data = await asyncio.to_thread(
+            create_avatar_presigned_put_url,
+            user_id=current_user.id,
+            file_ext=ext,
+        )
+    except BosNotConfiguredError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    return APIResponse(data=AvatarUploadUrlData(**data))
+
+
+@router.post("/avatar")
+async def upload_avatar_file(
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db_session),
+    current_user: User = Depends(get_current_user),
+) -> APIResponse[MeData]:
+    """小程序推荐：multipart 上传到服务端，由服务端写入 BOS 并更新 avatar_url。"""
+    body = await file.read()
+    file_ext = None
+    if file.filename and "." in file.filename:
+        file_ext = file.filename.rsplit(".", 1)[-1]
+    try:
+        public_url = await asyncio.to_thread(
+            put_avatar_bytes,
+            user_id=current_user.id,
+            data=body,
+            content_type=file.content_type or "image/jpeg",
+            file_ext=file_ext,
+        )
+    except BosNotConfiguredError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    user = await load_user_for_update(db, current_user.id)
+    if user is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    user.avatar_url = public_url
+    try:
+        await db.commit()
+    except SQLAlchemyError as exc:
+        await db.rollback()
+        logger.exception("upload_avatar db error user_id=%s", user.id)
+        raise HTTPException(status_code=500, detail="更新头像失败") from exc
+
+    try:
+        await invalidate_user_cache(user.id)
+    except Exception:
+        logger.warning("invalidate_user_cache failed user_id=%s", user.id, exc_info=True)
+
+    return APIResponse(data=build_me_data(user))
 
 
 @router.get("/place-activity-alerts")
