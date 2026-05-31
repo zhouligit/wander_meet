@@ -2,7 +2,8 @@
 """生成 ``app/data/city_hall_prefectures.json``。
 
 - 普通省：地级市（``cities.json``，建议经 jsDelivr 拉取 modood 数据）。
-- 直辖市：区县列表来自仓库内 ``app/data/city_hall_municipality_districts.json``（由 PCA 抽取，可单独更新）。
+- 直辖市（京/沪/津/渝）：全市一条（``110000`` 等）+ 区县列表，来自 ``city_hall_municipality_districts.json``。
+- 其他省：逻辑不变，仍为地级市列表。
 
 用法::
 
@@ -23,6 +24,20 @@ MUNI_PATH = ROOT / "app/data/city_hall_municipality_districts.json"
 OUT = ROOT / "app/data/city_hall_prefectures.json"
 
 MUNI_2 = {"11", "12", "31", "50"}
+# 直辖市省级码（六位）与展示名；目录首条为「全市」大群，其后为区县。
+MUNI_CITY: dict[str, tuple[str, str]] = {
+    "11": ("110000", "北京市"),
+    "12": ("120000", "天津市"),
+    "31": ("310000", "上海市"),
+    "50": ("500000", "重庆市"),
+}
+
+
+def _municipality_cities(pc2: str, districts: list[dict]) -> list[dict]:
+    """京/沪/津/渝：全市 + 区县；去重避免区县文件里误含市级码。"""
+    city_code, city_name = MUNI_CITY[pc2]
+    rest = [d for d in districts if d.get("cityCode") != city_code]
+    return [{"cityCode": city_code, "cityName": city_name}, *rest]
 
 
 def prov2_to_six(pc: str) -> str:
@@ -42,15 +57,12 @@ def main() -> None:
     for pc2 in sorted(by_p.keys(), key=lambda x: int(x)):
         pr_six = prov2_to_six(pc2)
         if pc2 in MUNI_2:
-            cities_out = list(muni.get(pc2) or [])
-            if not cities_out:
-                name_map = {
-                    "110000": "北京市",
-                    "120000": "天津市",
-                    "310000": "上海市",
-                    "500000": "重庆市",
-                }
-                cities_out = [{"cityCode": pr_six, "cityName": name_map[pr_six]}]
+            districts = list(muni.get(pc2) or [])
+            if districts:
+                cities_out = _municipality_cities(pc2, districts)
+            else:
+                cc, nm = MUNI_CITY[pc2]
+                cities_out = [{"cityCode": cc, "cityName": nm}]
         else:
             cities_out = []
             seen: set[str] = set()
