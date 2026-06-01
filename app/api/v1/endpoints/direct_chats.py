@@ -18,7 +18,7 @@ from app.schemas.activity import ChatMessageSender, SendMessageRequest
 from app.schemas.common import APIResponse
 from app.services.contact_content_filter import contact_text_blocked_reason
 from app.services.chat_message_payload import build_message_row_content
-from app.services.chat_stickers import message_content_fields
+from app.services.chat_location import chat_last_message_preview, message_content_fields
 from app.services.dm_relationship import (
     either_blocked,
     get_thread_by_users,
@@ -458,10 +458,9 @@ async def my_direct_chats(
         last_at = None
         if lm:
             last_at = lm.created_at
-            if lm.msg_type == "text":
-                last_message = lm.text_content or ""
-            else:
-                last_message = "[图片]"
+            last_message = chat_last_message_preview(
+                lm.msg_type, lm.text_content, lm.image_url
+            )
         items.append(
             MyDirectChatItem(
                 threadId=f"dmthr_{t.id}",

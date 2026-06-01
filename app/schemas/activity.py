@@ -157,6 +157,10 @@ class ChatMessageItem(BaseModel):
     text: str | None = None
     imageUrl: str | None = None
     stickerId: str | None = None
+    locationName: str | None = None
+    address: str | None = None
+    lat: float | None = None
+    lng: float | None = None
     createdAt: datetime
 
     @field_serializer("createdAt")
@@ -174,4 +178,8 @@ class SendMessageRequest(BaseModel):
     text: str | None = None
     imageUrl: str | None = None
     stickerId: str | None = None
+    locationName: str | None = None
+    address: str | None = None
+    lat: float | None = None
+    lng: float | None = None
 

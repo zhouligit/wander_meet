@@ -26,6 +26,7 @@ from app.services.user_cache import (
     set_cached_me_data,
     set_cached_me_stats,
 )
+from app.services.chat_location import chat_last_message_preview
 from app.services.chat_unread import get_chat_unread_counts, reset_chat_unread
 from app.services.city_hall import (
     CITY_HALL_ACTIVITY_KIND,
@@ -594,11 +595,10 @@ async def my_chats(
         if last_msg is None:
             last_message = None
             last_message_at = None
-        elif last_msg.msg_type == "text":
-            last_message = last_msg.text_content or ""
-            last_message_at = last_msg.created_at
         else:
-            last_message = "[图片]"
+            last_message = chat_last_message_preview(
+                last_msg.msg_type, last_msg.text_content, last_msg.image_url
+            )
             last_message_at = last_msg.created_at
 
         unread_raw = int(unread_map.get(activity.id, 0))

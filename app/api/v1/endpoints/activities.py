@@ -21,7 +21,7 @@ from app.services.activity_category import normalize_activity_category
 from app.services.city_hall import EVENT_ACTIVITY_KIND, is_city_hall_activity
 from app.services.contact_content_filter import contact_text_blocked_reason
 from app.services.chat_message_payload import build_message_row_content
-from app.services.chat_stickers import message_content_fields
+from app.services.chat_location import message_content_fields
 from app.db.session import get_db_session
 from app.services.activity_lifecycle import mark_activity_ended
 from app.services.chat_unread import increment_chat_unread_for_message

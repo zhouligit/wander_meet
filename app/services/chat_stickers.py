@@ -38,12 +38,8 @@ def validate_sticker_id(sticker_id: str) -> str:
 
 def message_content_fields(
     msg_type: str, text_content: str | None, image_url: str | None
-) -> dict[str, str | None]:
-    """序列化为 API 响应中的 text / stickerId / imageUrl。"""
-    if msg_type == "text":
-        return {"text": text_content, "stickerId": None, "imageUrl": None}
-    if msg_type == "sticker":
-        return {"text": None, "stickerId": text_content, "imageUrl": None}
-    if msg_type == "image":
-        return {"text": None, "stickerId": None, "imageUrl": image_url}
-    return {"text": text_content, "stickerId": None, "imageUrl": image_url}
+) -> dict[str, str | float | None]:
+    """兼容旧引用，委托 chat_location.message_content_fields。"""
+    from app.services.chat_location import message_content_fields as _fields
+
+    return _fields(msg_type, text_content, image_url)
