@@ -32,6 +32,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import sys
 from pathlib import Path
@@ -138,7 +139,7 @@ def read_concat(
 
 
 def source_preamble() -> list[str]:
-    """源程序合并文件开头标识（与申请表软件全称一致，不计入页眉行）。"""
+    """源程序说明（单独文件，不写入鉴别材料 PDF 正文）。"""
     bar = "# " + "=" * 72
     return [
         bar,
@@ -192,7 +193,8 @@ def main() -> None:
     out_dir = DIST_DIR
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    all_segments: list[str] = list(source_preamble())
+    # 正文摘录不含顶部说明块（说明见 cover_template / source_preamble.txt）
+    all_segments: list[str] = []
     report_lines: list[str] = []
 
     # Backend
@@ -243,6 +245,14 @@ def main() -> None:
         front_chunk = all_segments[:need_front]
         back_chunk = all_segments[-need_back:]
 
+    back_line_start = len(all_segments) - need_back + 1 if back_chunk else 1
+    (out_dir / "program_line_bases.json").write_text(
+        json.dumps({"front": 1, "back": back_line_start}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    (out_dir / "source_preamble.txt").write_text(
+        "\n".join(source_preamble()) + "\n", encoding="utf-8"
+    )
     (out_dir / "source_concat_full.txt").write_text("\n".join(all_segments) + "\n", encoding="utf-8")
     (out_dir / "source_front.txt").write_text(
         "\n".join(paginate_with_header(front_chunk, 1)) + "\n",

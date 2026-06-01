@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 将 source_front.txt + source_back.txt 排版为程序鉴别材料 PDF：
-连续 60 页（前 30 + 后 30），每页 50 行源程序。
+连续 60 页（前 30 + 后 30），每页 50 行源程序；左侧行号，正文不含顶部说明块。
 
 用法（wander_meet 根目录）：
   python3 scripts/soft_registration_export.py --frontend ../lv_ju/travel-together/src
@@ -10,6 +10,7 @@
 """
 from __future__ import annotations
 
+import json
 import re
 from pathlib import Path
 
@@ -39,9 +40,12 @@ RIGHT_PT = 48
 TOP_PT = 44
 BOTTOM_PT = 44
 HEADER_BAND = 22
+LINE_NUM_COL_PT = 34
+CODE_LEFT_PT = LEFT_PT + LINE_NUM_COL_PT
 FONT_SIZE = 8.5
+LINE_NUM_FONT_SIZE = 8
 LINE_HEIGHT = 13.6
-MAX_CHARS = 108
+MAX_CHARS = 96
 PAGE_HEADER_RE = re.compile(r"第\s*(\d+)\s*页")
 
 
@@ -98,7 +102,28 @@ def wrap_line(s: str) -> list[str]:
     return [s[j : j + MAX_CHARS] for j in range(0, len(s), MAX_CHARS)]
 
 
-def render_program_pdf(out_path: Path, pages: list[list[str]], font_name: str) -> None:
+def _load_line_bases(dist: Path) -> tuple[int, int]:
+    path = dist / "program_line_bases.json"
+    if path.is_file():
+        data = json.loads(path.read_text(encoding="utf-8"))
+        return int(data.get("front", 1)), int(data.get("back", 1))
+    return 1, 1
+
+
+def _line_base_for_page(page_no: int, front_base: int, back_base: int) -> int:
+    if page_no <= PAGES_FRONT:
+        return front_base + (page_no - 1) * LINES_PER_PAGE
+    return back_base + (page_no - PAGES_FRONT - 1) * LINES_PER_PAGE
+
+
+def render_program_pdf(
+    out_path: Path,
+    pages: list[list[str]],
+    font_name: str,
+    *,
+    front_line_base: int,
+    back_line_base: int,
+) -> None:
     if len(pages) != TOTAL_PROGRAM_PAGES:
         raise SystemExit(
             f"需要 {TOTAL_PROGRAM_PAGES} 页源程序，当前解析得到 {len(pages)} 页。"
@@ -119,11 +144,16 @@ def render_program_pdf(out_path: Path, pages: list[list[str]], font_name: str) -
         c.drawString(LEFT_PT, PAGE_HEIGHT - TOP_PT + 6, page_header_left()[:96])
         c.drawRightString(PAGE_WIDTH - RIGHT_PT, PAGE_HEIGHT - TOP_PT + 6, f"第 {page_no} 页")
 
+        line_base = _line_base_for_page(page_no, front_line_base, back_line_base)
         for row, raw in enumerate(code_lines):
             y = usable_top - (row + 1) * LINE_HEIGHT
+            line_no = line_base + row
+            c.setFont(font_name, LINE_NUM_FONT_SIZE)
+            c.setFillColor(colors.HexColor("#64748b"))
+            c.drawRightString(CODE_LEFT_PT - 6, y, str(line_no))
             c.setFont(font_name, FONT_SIZE)
             c.setFillColor(colors.black)
-            c.drawString(LEFT_PT, y, raw.expandtabs(4)[:MAX_CHARS])
+            c.drawString(CODE_LEFT_PT, y, raw.expandtabs(4)[:MAX_CHARS])
         c.showPage()
 
     c.save()
@@ -156,9 +186,16 @@ def main() -> None:
 
     font_name = _register_font(_find_unicode_font())
     all_pages = front_pages + back_pages
+    front_base, back_base = _load_line_bases(dist)
 
     out_pdf = dist / "pdf" / "program_identification_material.pdf"
-    render_program_pdf(out_pdf, all_pages, font_name)
+    render_program_pdf(
+        out_pdf,
+        all_pages,
+        font_name,
+        front_line_base=front_base,
+        back_line_base=back_base,
+    )
     print("已生成:", out_pdf.resolve(), f"（共 {len(all_pages)} 页）")
 
     write_cover_txt(dist)
