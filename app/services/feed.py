@@ -212,9 +212,10 @@ async def create_activity_post(
     )
     if not en:
         raise HTTPException(status_code=403, detail="仅活动参与者可发布")
-    if effective_activity_status(activity) == "cancelled":
+    now = datetime.now(UTC)
+    if effective_activity_status(activity, now) == "cancelled":
         raise HTTPException(status_code=400, detail="活动已取消")
-    if not activity_post_window_open(activity):
+    if not activity_post_window_open(activity, now):
         raise HTTPException(status_code=400, detail="当前不在活动态发布时间窗口内")
 
     return await create_post(
