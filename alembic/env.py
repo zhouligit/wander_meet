@@ -21,6 +21,7 @@ from app.models import (  # noqa: F401
     user_chat_read,
     user_block,
     user_verification,
+    growth_trust,
 )
 
 config = context.config

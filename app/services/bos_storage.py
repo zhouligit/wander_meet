@@ -96,6 +96,11 @@ def chat_image_object_key(user_id: int, ext: str) -> str:
     return f"wm/chat/u_{user_id}/{uuid.uuid4().hex}.{safe_ext}"
 
 
+def photo_verify_object_key(user_id: int, ext: str) -> str:
+    safe_ext = normalize_image_ext(ext)
+    return f"wm/photo_verify/u_{user_id}/selfie.{safe_ext}"
+
+
 def public_url_for_object_key(object_key: str, settings: Settings | None = None) -> str:
     s = _require_bos(settings)
     base = s.bos_public_base_url.rstrip("/")
@@ -246,6 +251,55 @@ def put_chat_image_bytes(*, user_id: int, data: bytes, content_type: str, file_e
 
     public = public_url_for_object_key(key, s)
     return f"{public}?v={int(time.time())}"
+
+
+def validate_stored_photo_selfie_url(
+    url: str, user_id: int, settings: Settings | None = None
+) -> str:
+    u = url.strip()
+    if not u or len(u) > 512:
+        raise HTTPException(status_code=400, detail="selfieUrl invalid")
+    s = _require_bos(settings)
+    base = s.bos_public_base_url.rstrip("/")
+    path_url = u.split("?", 1)[0]
+    for prefix in (f"{base}/wm/photo_verify/u_{user_id}/", f"{base}/wm/chat/u_{user_id}/"):
+        if path_url.startswith(prefix):
+            if re.match(r"^https?://", u):
+                return u
+    raise HTTPException(status_code=400, detail="selfieUrl must be your uploaded photo")
+
+
+def put_photo_verify_bytes(
+    *, user_id: int, data: bytes, content_type: str, file_ext: str | None = None
+) -> str:
+    s = _require_bos()
+    if not data:
+        raise HTTPException(status_code=400, detail="empty file")
+    max_bytes = getattr(s, "bos_photo_verify_max_bytes", 8 * 1024 * 1024)
+    if len(data) > max_bytes:
+        raise HTTPException(status_code=400, detail="photo file too large")
+    sniffed = sniff_image_content_type(data)
+    if not sniffed:
+        raise HTTPException(status_code=400, detail="invalid image file")
+    ext = normalize_image_ext(file_ext, sniffed)
+    ct = _EXT_TO_CONTENT_TYPE.get(ext, sniffed)
+    key = photo_verify_object_key(user_id, ext)
+    bucket = s.bos_bucket.strip()
+    try:
+        from baidubce.services.bos import canned_acl
+
+        client = _bos_client()
+        client.put_object_from_string(
+            bucket,
+            key,
+            data,
+            content_type=ct,
+            user_headers={b"x-bce-acl": canned_acl.PUBLIC_READ},
+        )
+    except Exception as exc:
+        logger.exception("BOS photo verify upload failed user_id=%s", user_id)
+        raise HTTPException(status_code=502, detail="自拍上传存储失败") from exc
+    return public_url_for_object_key(key, s) + f"?v={int(time.time())}"
 
 
 def create_avatar_presigned_put_url(*, user_id: int, file_ext: str) -> dict[str, str]:

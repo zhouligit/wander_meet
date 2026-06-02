@@ -13,6 +13,18 @@ from app.models.user_chat_read import UserChatRead
 from app.models.user_block import UserBlock
 from app.models.user_verification import UserVerification
 from app.models.user_feedback import UserFeedback
+from app.models.growth_trust import (
+    ActivityCheckin,
+    ActivityExposureBoost,
+    ActivityMeetReview,
+    PhotoVerification,
+    ReferralBinding,
+    ReferralCode,
+    UserBadge,
+    UserEntitlement,
+    UserSafetyAck,
+    UserTrustProfile,
+)
 
 __all__ = [
     "User",
@@ -30,5 +42,15 @@ __all__ = [
     "Notification",
     "PlaceActivityAlert",
     "UserFeedback",
+    "ReferralCode",
+    "ReferralBinding",
+    "UserEntitlement",
+    "UserBadge",
+    "PhotoVerification",
+    "ActivityCheckin",
+    "ActivityMeetReview",
+    "ActivityExposureBoost",
+    "UserTrustProfile",
+    "UserSafetyAck",
 ]
 

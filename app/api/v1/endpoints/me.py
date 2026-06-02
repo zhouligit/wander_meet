@@ -488,8 +488,14 @@ async def my_activities(
 
 
 @router.get("/premium")
-async def my_premium(_: User = Depends(get_current_user)) -> APIResponse[PremiumData]:
-    return APIResponse(data=PremiumData(enabled=False, sku=[]))
+async def my_premium(
+    db: AsyncSession = Depends(get_db_session),
+    current_user: User = Depends(get_current_user),
+) -> APIResponse[PremiumData]:
+    from app.services.growth_trust import build_premium_data
+
+    raw = await build_premium_data(db, current_user.id)
+    return APIResponse(data=PremiumData(**raw))
 
 
 @router.get("/chats")

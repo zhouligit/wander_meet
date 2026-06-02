@@ -12,6 +12,12 @@ class UserPublicProfileData(BaseModel):
     tags: list[str] = Field(default_factory=list)
     verificationBadge: bool = False
     organizedCount: int = 0
+    trustLevel: str | None = None
+    photoVerified: bool = False
+    meetCount: int = 0
+    showMeetCount: bool = True
+    badges: list[str] = Field(default_factory=list)
+    premiumBadge: bool = False
 
 
 class UserDmContextData(BaseModel):

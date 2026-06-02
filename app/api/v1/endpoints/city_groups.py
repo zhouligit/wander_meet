@@ -227,6 +227,10 @@ async def join_city_hall(
     enrollment = await enroll_user_in_activity(
         db, current_user.id, activity, raise_if_already_joined=False
     )
+    from app.services.growth_trust import grant_pending_referral_rewards, on_qualified_action
+
+    await on_qualified_action(db, current_user.id, "city_hall_join")
+    await grant_pending_referral_rewards(db)
     cnt = await _member_count(db, activity.id)
 
     logger.info(

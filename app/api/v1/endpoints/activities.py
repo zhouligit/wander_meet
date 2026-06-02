@@ -590,6 +590,11 @@ async def enroll_activity(
         raise HTTPException(status_code=404, detail="Activity not found")
 
     enrollment = await enroll_user_in_activity(db, current_user.id, activity)
+    from app.services.growth_trust import grant_pending_referral_rewards, on_qualified_action
+
+    action = "city_hall_join" if is_city_hall_activity(activity) else "event_enroll"
+    await on_qualified_action(db, current_user.id, action)
+    await grant_pending_referral_rewards(db)
     await invalidate_activity_read_caches(
         city_code=activity.city_code, activity_id=activity.id
     )

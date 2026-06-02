@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, Query
 from app.api.deps import get_current_user
 from app.db.session import get_db_session
 from app.services.user_profile_fields import bio_from_user, tags_from_user
+from app.services.growth_trust import build_public_trust_fields
 from app.services.dm_relationship import either_blocked, get_thread_by_users, is_activity_participant
 from app.models.activity import Activity
 from app.models.dm_request import DmRequest
@@ -125,6 +126,16 @@ async def get_user_dm_context(
             )
         )
 
+    from app.services.growth_trust import can_initiate_dm
+
+    if not await can_initiate_dm(db, current_user.id):
+        return APIResponse(
+            data=UserDmContextData(
+                canRequest=False,
+                denyReason="low_trust_score",
+            )
+        )
+
     return APIResponse(data=UserDmContextData(canRequest=True))
 
 
@@ -159,6 +170,7 @@ async def get_user_public_profile(
     pub_g = target.gender
     if pub_g is not None and pub_g not in ("male", "female", "unspecified"):
         pub_g = None
+    trust_fields = await build_public_trust_fields(db, target)
     data = UserPublicProfileData(
         userId=f"u_{target.id}",
         nickname=target.nickname,
@@ -168,5 +180,6 @@ async def get_user_public_profile(
         tags=tags_from_user(target),
         verificationBadge=verification_badge,
         organizedCount=int(organized or 0),
+        **trust_fields,
     )
     return APIResponse(data=data)

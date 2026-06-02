@@ -107,9 +107,22 @@ class MyActivitiesData(BaseModel):
     eventCount: int | None = None
 
 
+class PremiumEntitlementSummary(BaseModel):
+    active: bool = False
+    tier: str | None = None
+    expiresAt: datetime | None = None
+    pinQuotaRemaining: int = 0
+    badges: list[str] = Field(default_factory=list)
+
+    @field_serializer("expiresAt")
+    def _ser_exp(self, v: datetime | None) -> str | None:
+        return datetime_to_rfc3339_utc_z_shanghai_naive(v)
+
+
 class PremiumData(BaseModel):
     enabled: bool
-    sku: list[str]
+    sku: list[str] = Field(default_factory=list)
+    entitlement: PremiumEntitlementSummary = Field(default_factory=PremiumEntitlementSummary)
 
 
 class MyChatItem(BaseModel):

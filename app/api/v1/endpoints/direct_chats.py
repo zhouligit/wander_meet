@@ -123,6 +123,15 @@ async def create_dm_request(
     if await either_blocked(db, current_user.id, to_user_id):
         return APIResponse(code=403, message="blocked", data=DmRequestCreatedData(status=""))
 
+    from app.services.growth_trust import can_initiate_dm
+
+    if not await can_initiate_dm(db, current_user.id):
+        return APIResponse(
+            code=403,
+            message="trust score too low to start new chat",
+            data=DmRequestCreatedData(status=""),
+        )
+
     existing_thread = await get_thread_by_users(db, current_user.id, to_user_id)
     if existing_thread:
         return APIResponse(
