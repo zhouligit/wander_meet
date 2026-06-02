@@ -22,6 +22,7 @@ from app.models import (  # noqa: F401
     user_block,
     user_verification,
     growth_trust,
+    feed,
 )
 
 config = context.config

@@ -13,6 +13,7 @@ from app.models.user_chat_read import UserChatRead
 from app.models.user_block import UserBlock
 from app.models.user_verification import UserVerification
 from app.models.user_feedback import UserFeedback
+from app.models.feed import Post, PostComment, PostLike, UserFollow
 from app.models.growth_trust import (
     ActivityCheckin,
     ActivityExposureBoost,
@@ -52,5 +53,9 @@ __all__ = [
     "ActivityExposureBoost",
     "UserTrustProfile",
     "UserSafetyAck",
+    "Post",
+    "PostLike",
+    "PostComment",
+    "UserFollow",
 ]
 

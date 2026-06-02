@@ -20,6 +20,7 @@ UPDATE users SET role = 'admin' WHERE id = 1;
 - 打开底部 **「我的」**
 - 菜单顶部会出现 **「照片验证审核」**（仅 `isAdmin=true` 可见）
 - 副标题显示待审数量，如 `3 待审`
+- 点击进入 **信任中心同款页面**（`trust?mode=adminReview`），避免独立新页面未编入包导致白屏
 
 ### 3. 审核操作
 
@@ -42,7 +43,7 @@ UPDATE users SET role = 'admin' WHERE id = 1;
 
 | 现象 | 处理 |
 |------|------|
-| 整页空白 | 重新编译上传小程序；确认 `pages.json` 已注册 `admin-photo-review` |
+| 整页空白 | 使用最新前端：入口已改为 `信任中心` 审核模式；微信开发者工具 **编译** 后重进 |
 | 「加载失败」 | 后端未部署 `/admin/photo-verifications` 或未执行迁移 |
 | 「无管理员权限」 | 执行 `UPDATE users SET role='admin'` 后完全退出再登录 |
 | 有菜单但进页空白 | 多为旧包未含审核页，或接口 500，看页面是否显示错误文案 |

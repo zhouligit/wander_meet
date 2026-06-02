@@ -60,6 +60,8 @@ from app.schemas.activity import (
     UpdateActivityRequest,
 )
 from app.schemas.common import APIResponse
+from app.schemas.feed import FeedListData, FeedPostCreateData, FeedPostCreateRequest, FeedPostItem
+from app.services.feed import create_activity_post, list_activity_posts
 
 router = APIRouter(prefix="/activities", tags=["activities"])
 logger = logging.getLogger(__name__)
@@ -644,6 +646,50 @@ async def cancel_enrollment(
     )
     await invalidate_me_stats(current_user.id)
     return APIResponse(data={"status": "cancelled"})
+
+
+@router.get("/{activity_id}/posts")
+async def list_activity_posts(
+    activity_id: str,
+    page: int = Query(1, ge=1),
+    pageSize: int = Query(20, ge=1, le=50),
+    db: AsyncSession = Depends(get_db_session),
+    viewer: User | None = Depends(get_optional_user),
+) -> APIResponse[FeedListData]:
+    activity_pk = _parse_activity_id(activity_id)
+    items, total = await list_activity_posts(
+        db,
+        activity_pk,
+        viewer.id if viewer else None,
+        page=page,
+        page_size=pageSize,
+    )
+    return APIResponse(
+        data=FeedListData(
+            list=[FeedPostItem(**x) for x in items],
+            total=total,
+            page=page,
+            pageSize=pageSize,
+        )
+    )
+
+
+@router.post("/{activity_id}/posts")
+async def create_activity_post_endpoint(
+    activity_id: str,
+    payload: FeedPostCreateRequest,
+    db: AsyncSession = Depends(get_db_session),
+    current_user: User = Depends(get_current_user),
+) -> APIResponse[FeedPostCreateData]:
+    activity_pk = _parse_activity_id(activity_id)
+    row = await create_activity_post(
+        db,
+        current_user,
+        activity_pk,
+        payload.content,
+        payload.images,
+    )
+    return APIResponse(data=FeedPostCreateData(postId=f"post_{row.id}"))
 
 
 def _parse_activity_id(activity_id: str) -> int:
