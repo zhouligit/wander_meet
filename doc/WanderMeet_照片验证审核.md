@@ -36,7 +36,16 @@ UPDATE users SET role = 'admin' WHERE id = 1;
 ### 4. 发布要求
 
 - **后端**：含 `GET /me` 的 `isAdmin` 字段 + `/admin/photo-verifications/*` 接口，并已 `alembic upgrade head`
-- **前端**：含 `pages/admin-photo-review` 与「我的」入口，需重新上传小程序体验版/正式版
+- **前端**：含 `pages/admin-photo-review` 与「我的」入口，需 **重新编译并上传** 小程序（新增页面必须重新构建，否则会白屏）
+
+### 5. 白屏排查
+
+| 现象 | 处理 |
+|------|------|
+| 整页空白 | 重新编译上传小程序；确认 `pages.json` 已注册 `admin-photo-review` |
+| 「加载失败」 | 后端未部署 `/admin/photo-verifications` 或未执行迁移 |
+| 「无管理员权限」 | 执行 `UPDATE users SET role='admin'` 后完全退出再登录 |
+| 有菜单但进页空白 | 多为旧包未含审核页，或接口 500，看页面是否显示错误文案 |
 
 ---
 

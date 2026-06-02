@@ -183,9 +183,10 @@ async def my_stats(
 
 @router.get("")
 async def get_me(current_user: User = Depends(get_current_user)) -> APIResponse[MeData]:
+    is_admin = (current_user.role or "").strip() == "admin"
     cached = await get_cached_me_data(current_user.id)
     if cached is not None:
-        return APIResponse(data=cached)
+        return APIResponse(data=cached.model_copy(update={"isAdmin": is_admin}))
     data = build_me_data(current_user)
     await set_cached_me_data(current_user.id, data)
     return APIResponse(data=data)
