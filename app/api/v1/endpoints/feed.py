@@ -44,7 +44,7 @@ from app.services.feed import (
     set_follow,
     toggle_like,
 )
-from app.services.city_groups import normalize_city_code
+from app.services.city_hall import normalize_city_code
 
 router = APIRouter(tags=["feed"])
 
