@@ -57,6 +57,7 @@ from app.schemas.me import (
     VerificationSummary,
 )
 from app.schemas.feedback import CreateUserFeedbackRequest, UserFeedbackCreateData
+from app.schemas.feed import FeedImageUploadData
 from app.schemas.place_activity import (
     CreatePlaceActivityAlertRequest,
     PlaceActivityAlertCreateData,
@@ -80,6 +81,7 @@ from app.services.bos_storage import (
     normalize_avatar_ext,
     put_avatar_bytes,
     put_chat_image_bytes,
+    put_feed_image_bytes,
     validate_stored_avatar_url,
 )
 from app.db.session import redis_client
@@ -741,6 +743,29 @@ async def upload_chat_image_file(
     except BosNotConfiguredError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     return APIResponse(data=ChatImageUploadData(imageUrl=public_url))
+
+
+@router.post("/feed/images")
+async def upload_feed_image_file(
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+) -> APIResponse[FeedImageUploadData]:
+    """同城/活动动态图片：multipart 上传到 BOS，发布时在 images 携带返回值。"""
+    body = await file.read()
+    file_ext = None
+    if file.filename and "." in file.filename:
+        file_ext = file.filename.rsplit(".", 1)[-1]
+    try:
+        public_url = await asyncio.to_thread(
+            put_feed_image_bytes,
+            user_id=current_user.id,
+            data=body,
+            content_type=file.content_type or "image/jpeg",
+            file_ext=file_ext,
+        )
+    except BosNotConfiguredError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    return APIResponse(data=FeedImageUploadData(imageUrl=public_url))
 
 
 @router.get("/place-activity-alerts")

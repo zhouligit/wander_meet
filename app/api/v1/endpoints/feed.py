@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-import asyncio
-
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, get_optional_user
@@ -16,7 +14,6 @@ from app.schemas.feed import (
     FeedCommentCreateRequest,
     FeedCommentListData,
     FeedCommentItem,
-    FeedImageUploadData,
     FeedLikeData,
     FeedListData,
     FeedPostCreateData,
@@ -26,7 +23,6 @@ from app.schemas.feed import (
     FeedTopicsMetaData,
     UserFollowData,
 )
-from app.services.bos_storage import BosNotConfiguredError, put_feed_image_bytes
 from app.services.feed import (
     ALLOWED_TOPICS,
     POST_KIND_CITY,
@@ -176,28 +172,6 @@ async def create_feed_post_comment(
 ) -> APIResponse[FeedCommentCreateData]:
     row = await add_comment(db, current_user, _parse_post_id(post_id), payload.content)
     return APIResponse(data=FeedCommentCreateData(commentId=f"pcom_{row.id}"))
-
-
-@router.post("/me/feed/images")
-async def upload_feed_image(
-    file: UploadFile = File(...),
-    current_user: User = Depends(get_current_user),
-) -> APIResponse[FeedImageUploadData]:
-    body = await file.read()
-    file_ext = None
-    if file.filename and "." in file.filename:
-        file_ext = file.filename.rsplit(".", 1)[-1]
-    try:
-        public_url = await asyncio.to_thread(
-            put_feed_image_bytes,
-            user_id=current_user.id,
-            data=body,
-            content_type=file.content_type or "image/jpeg",
-            file_ext=file_ext,
-        )
-    except BosNotConfiguredError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
-    return APIResponse(data=FeedImageUploadData(imageUrl=public_url))
 
 
 @router.get("/users/{user_id}/posts")
