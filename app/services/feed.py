@@ -59,15 +59,15 @@ def _parse_activity_id(activity_id: str) -> int:
 
 
 def activity_post_window_open(activity: Activity, now: datetime | None = None) -> bool:
-    """活动结束后 72h 内可发活动态；无 end_at 则从 start+2h 起 72h。"""
+    """活动开始后至结束 72h 内可发活动态；无 end_at 则从 start 起 72h 内。"""
     now = now or datetime.now(UTC)
     start = to_utc(activity.start_at)
     if activity.end_at:
         end = to_utc(activity.end_at)
-        window_start = end
+        window_start = start
         window_end = end + timedelta(hours=ACTIVITY_POST_HOURS_AFTER_END)
     else:
-        window_start = start + timedelta(hours=2)
+        window_start = start
         window_end = start + timedelta(hours=ACTIVITY_POST_HOURS_AFTER_END)
     return window_start <= now <= window_end
 
