@@ -273,7 +273,7 @@ async def get_pending_meet_checkins(
 
     items: list[PendingCheckinItem] = []
     for activity, _en in rows:
-        eff = effective_activity_status(activity)
+        eff = effective_activity_status(activity, now)
         if eff == "cancelled":
             continue
         open_, _, window_end = checkin_window(activity, now)
