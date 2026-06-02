@@ -8,7 +8,14 @@ from app.api.deps import get_admin_user
 from app.services.user_cache import invalidate_user_cache
 from app.db.session import get_db_session
 from app.models.activity import Activity
+from app.models.growth_trust import PhotoVerification
 from app.models.user import User
+from app.schemas.admin_photo_verify import (
+    AdminPhotoVerificationActionData,
+    AdminPhotoVerificationItem,
+    AdminPhotoVerificationListData,
+    AdminPhotoVerificationRejectRequest,
+)
 from app.schemas.admin_user import (
     AdminMergeUsersData,
     AdminMergeUsersRequest,
@@ -208,6 +215,101 @@ async def admin_merge_users_endpoint(
             phoneMasked=mask_user_phone(kept),
             phoneBound=user_has_phone(kept),
             mpOpenidTransferred=openid_transferred,
+        )
+    )
+
+
+@router.get("/photo-verifications")
+async def admin_list_photo_verifications(
+    status: str = Query("pending", description="pending | approved | rejected"),
+    page: int = Query(1, ge=1),
+    pageSize: int = Query(20, ge=1, le=50),
+    db: AsyncSession = Depends(get_db_session),
+    _: User = Depends(get_admin_user),
+) -> APIResponse[AdminPhotoVerificationListData]:
+    """照片验证审核队列：对比用户头像与自拍原图后通过/拒绝。"""
+    filters = [PhotoVerification.status == status]
+    total = int(
+        await db.scalar(select(func.count(PhotoVerification.id)).where(*filters)) or 0
+    )
+    offset = (page - 1) * pageSize
+    rows = (
+        await db.execute(
+            select(PhotoVerification, User)
+            .join(User, User.id == PhotoVerification.user_id)
+            .where(*filters)
+            .order_by(PhotoVerification.submitted_at.asc())
+            .offset(offset)
+            .limit(pageSize)
+        )
+    ).all()
+    items = [
+        AdminPhotoVerificationItem(
+            verificationId=f"pv_{pv.id}",
+            userId=f"u_{pv.user_id}",
+            nickname=user.nickname or "用户",
+            avatarUrl=user.avatar_url,
+            selfieUrl=pv.selfie_url,
+            status=pv.status,
+            submittedAt=pv.submitted_at,
+        )
+        for pv, user in rows
+    ]
+    return APIResponse(
+        data=AdminPhotoVerificationListData(
+            list=items, total=total, page=page, pageSize=pageSize
+        )
+    )
+
+
+def _parse_photo_verification_id(verification_id: str) -> int:
+    s = (verification_id or "").strip()
+    if s.startswith("pv_"):
+        s = s[3:]
+    if not s.isdigit():
+        raise HTTPException(status_code=400, detail="Invalid verificationId")
+    return int(s)
+
+
+@router.post("/photo-verifications/{verification_id}/approve")
+async def admin_approve_photo_verification(
+    verification_id: str,
+    db: AsyncSession = Depends(get_db_session),
+    admin_user: User = Depends(get_admin_user),
+) -> APIResponse[AdminPhotoVerificationActionData]:
+    from app.services.growth_trust import approve_photo_verification
+
+    vid = _parse_photo_verification_id(verification_id)
+    row = await approve_photo_verification(db, vid, admin_user.id)
+    await db.commit()
+    await invalidate_user_cache(row.user_id)
+    return APIResponse(
+        data=AdminPhotoVerificationActionData(
+            verificationId=f"pv_{row.id}",
+            userId=f"u_{row.user_id}",
+            status=row.status,
+        )
+    )
+
+
+@router.post("/photo-verifications/{verification_id}/reject")
+async def admin_reject_photo_verification(
+    verification_id: str,
+    payload: AdminPhotoVerificationRejectRequest,
+    db: AsyncSession = Depends(get_db_session),
+    admin_user: User = Depends(get_admin_user),
+) -> APIResponse[AdminPhotoVerificationActionData]:
+    from app.services.growth_trust import reject_photo_verification
+
+    vid = _parse_photo_verification_id(verification_id)
+    row = await reject_photo_verification(db, vid, admin_user.id, payload.reason)
+    await db.commit()
+    await invalidate_user_cache(row.user_id)
+    return APIResponse(
+        data=AdminPhotoVerificationActionData(
+            verificationId=f"pv_{row.id}",
+            userId=f"u_{row.user_id}",
+            status=row.status,
         )
     )
 

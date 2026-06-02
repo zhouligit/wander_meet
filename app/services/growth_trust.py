@@ -476,6 +476,55 @@ SAFETY_GUIDE_SECTIONS = [
 ]
 
 
+async def approve_photo_verification(
+    db: AsyncSession,
+    verification_id: int,
+    reviewer_id: int,
+) -> PhotoVerification:
+    row = await db.scalar(
+        select(PhotoVerification).where(PhotoVerification.id == verification_id)
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="验证记录不存在")
+    if row.status != "pending":
+        raise HTTPException(status_code=400, detail="该记录已审核")
+    now = datetime.now(UTC)
+    row.status = "approved"
+    row.reviewer_id = reviewer_id
+    row.reviewed_at = now
+    row.reject_reason = None
+    tp = await get_or_create_trust_profile(db, row.user_id)
+    tp.photo_verified = True
+    tp.trust_score = min(1000, tp.trust_score + 150)
+    user = await db.scalar(select(User).where(User.id == row.user_id))
+    if user:
+        await sync_trust_level(db, user)
+    await db.flush()
+    return row
+
+
+async def reject_photo_verification(
+    db: AsyncSession,
+    verification_id: int,
+    reviewer_id: int,
+    reason: str,
+) -> PhotoVerification:
+    row = await db.scalar(
+        select(PhotoVerification).where(PhotoVerification.id == verification_id)
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="验证记录不存在")
+    if row.status != "pending":
+        raise HTTPException(status_code=400, detail="该记录已审核")
+    now = datetime.now(UTC)
+    row.status = "rejected"
+    row.reviewer_id = reviewer_id
+    row.reviewed_at = now
+    row.reject_reason = (reason or "请重新拍摄").strip()[:256]
+    await db.flush()
+    return row
+
+
 async def build_premium_data(db: AsyncSession, user_id: int) -> dict:
     ent = await get_active_entitlement_summary(db, user_id)
     badges = await get_visible_badge_ids(db, user_id)

@@ -41,6 +41,8 @@ class MeData(BaseModel):
     notifyPrefs: dict | None = None
     showDistance: bool = True
     onboardingCompletedAt: str | None = None
+    #: 运营管理员（``users.role=admin``），可进小程序审核入口
+    isAdmin: bool = False
 
 
 class UpdateMeRequest(BaseModel):

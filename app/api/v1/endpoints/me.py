@@ -145,6 +145,7 @@ def build_me_data(user: User) -> MeData:
         notifyPrefs=np,
         showDistance=bool(user.show_distance),
         onboardingCompletedAt=datetime_to_rfc3339_utc_z(user.onboarding_completed_at),
+        isAdmin=(user.role or "").strip() == "admin",
     )
 
 
