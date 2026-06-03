@@ -1,10 +1,16 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+
+
+class SubCategoryItem(BaseModel):
+    subCategoryId: str
+    name: str
 
 
 class CategoryItem(BaseModel):
     categoryId: str
     name: str
     icon: str | None = None
+    subcategories: list[SubCategoryItem] = Field(default_factory=list)
 
 
 class CategoryData(BaseModel):

@@ -17,7 +17,7 @@ from app.services.activity_query import (
     to_utc_optional,
 )
 from app.services.activity_enroll import enroll_user_in_activity
-from app.services.activity_category import normalize_activity_category
+from app.services.activity_category import category_display_name, normalize_activity_category
 from app.services.city_hall import EVENT_ACTIVITY_KIND, is_city_hall_activity
 from app.services.contact_content_filter import contact_text_blocked_reason
 from app.services.content_moderation import assert_text_fields_safe, moderate_send_message_request
@@ -69,8 +69,17 @@ router = APIRouter(prefix="/activities", tags=["activities"])
 logger = logging.getLogger(__name__)
 
 
-def _category_label_for_api(activity: Activity) -> str:
-    return (activity.category_label or "").strip()
+def _category_fields_for_api(activity: Activity) -> dict[str, str]:
+    sub = (activity.sub_category_id or "").strip()
+    label = (activity.category_label or "").strip()
+    return {
+        "categoryId": activity.category_id,
+        "subCategoryId": sub,
+        "categoryLabel": label,
+        "categoryDisplay": category_display_name(
+            activity.category_id, activity.sub_category_id, activity.category_label
+        ),
+    }
 
 
 def _organizer_for_detail(org: User | None) -> ActivityDetailOrganizer:
@@ -97,6 +106,7 @@ async def list_activities(
     cityCode: str = Query(...),
     dateRange: str = Query("all"),
     categoryId: str | None = Query(None),
+    subCategoryId: str | None = Query(None),
     page: int = Query(1, ge=1),
     pageSize: int = Query(20, ge=1, le=50),
     db: AsyncSession = Depends(get_db_session),
@@ -118,6 +128,8 @@ async def list_activities(
     filters.extend(date_range_start_filters(dateRange))
     if categoryId:
         filters.append(Activity.category_id == categoryId)
+    if subCategoryId:
+        filters.append(Activity.sub_category_id == subCategoryId)
 
     cache_key = activity_list_cache_key(cc, dateRange, categoryId, page, pageSize)
     cached_list = await get_cached_activity_list(cache_key)
@@ -198,8 +210,7 @@ async def list_activities(
             lng=float(a.lng),
             enrolledCount=enrollment_map.get(a.id, 0),
             maxMembers=a.max_members,
-            categoryId=a.category_id,
-            categoryLabel=_category_label_for_api(a),
+            **_category_fields_for_api(a),
             activityStatus=effective_activity_status(a, now_utc),
             enrollmentStatus="joined" if a.id in joined_ids else None,
         )
@@ -228,6 +239,7 @@ async def list_nearby_activities(
     cityCode: str | None = Query(None),
     dateRange: str = Query("all"),
     categoryId: str | None = Query(None),
+    subCategoryId: str | None = Query(None),
     sortBy: str = Query("distance"),
     page: int = Query(1, ge=1),
     pageSize: int = Query(20, ge=1, le=50),
@@ -264,6 +276,8 @@ async def list_nearby_activities(
         base_filters.append(activity_city_code_matches(Activity.city_code, cityCode))
     if categoryId:
         base_filters.append(Activity.category_id == categoryId)
+    if subCategoryId:
+        base_filters.append(Activity.sub_category_id == subCategoryId)
 
     nearby_cache_key = activity_nearby_cache_key(
         city_code=cityCode,
@@ -377,8 +391,7 @@ async def list_nearby_activities(
             distanceMeters=distance_map.get(a.id),
             enrolledCount=enrollment_map.get(a.id, 0),
             maxMembers=a.max_members,
-            categoryId=a.category_id,
-            categoryLabel=_category_label_for_api(a),
+            **_category_fields_for_api(a),
             activityStatus=effective_activity_status(a, now_utc),
             enrollmentStatus="joined" if a.id in joined_ids else None,
         )
@@ -445,8 +458,7 @@ async def _build_activity_detail_data(
         activityKind=activity.activity_kind,
         title=activity.title,
         description=activity.description,
-        categoryId=activity.category_id,
-        categoryLabel=_category_label_for_api(activity),
+        **_category_fields_for_api(activity),
         startAt=activity.start_at,
         endAt=activity.end_at,
         cityCode=activity.city_code,
@@ -529,8 +541,8 @@ async def create_activity(
             detail="startAt must not be before now (5 minute tolerance)",
         )
 
-    cat_id, cat_label = normalize_activity_category(
-        payload.categoryId, payload.categoryLabel
+    cat_id, sub_id, cat_label = normalize_activity_category(
+        payload.categoryId, payload.subCategoryId, payload.categoryLabel
     )
 
     await assert_text_fields_safe(
@@ -549,6 +561,7 @@ async def create_activity(
         title=payload.title,
         description=payload.description,
         category_id=cat_id,
+        sub_category_id=sub_id,
         category_label=cat_label,
         city_code=payload.cityCode,
         location_name=payload.locationName,
@@ -743,13 +756,16 @@ async def update_activity(
     ):
         raise HTTPException(status_code=400, detail="endAt must be after startAt")
 
-    if "categoryId" in updates or "categoryLabel" in updates:
+    if "categoryId" in updates or "categoryLabel" in updates or "subCategoryId" in updates:
         new_cid = updates.get("categoryId", activity.category_id)
+        new_sub = updates.get("subCategoryId", activity.sub_category_id)
         new_label = updates.get("categoryLabel", activity.category_label)
-        cat_id, cat_label = normalize_activity_category(new_cid, new_label)
+        cat_id, sub_id, cat_label = normalize_activity_category(new_cid, new_sub, new_label)
         activity.category_id = cat_id
+        activity.sub_category_id = sub_id
         activity.category_label = cat_label
         updates.pop("categoryId", None)
+        updates.pop("subCategoryId", None)
         updates.pop("categoryLabel", None)
 
     field_map = {

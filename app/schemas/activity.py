@@ -19,7 +19,9 @@ class ActivityCard(BaseModel):
     enrolledCount: int
     maxMembers: int
     categoryId: str
+    subCategoryId: str = ""
     categoryLabel: str = ""
+    categoryDisplay: str = ""
     activityStatus: str
     enrollmentStatus: str | None = None
 
@@ -54,6 +56,7 @@ class CreateActivityRequest(BaseModel):
     description: str = Field(min_length=1)
     categoryId: str
     categoryLabel: str | None = Field(default=None, max_length=32)
+    subCategoryId: str | None = Field(default=None, max_length=32)
     startAt: datetime
     endAt: datetime | None = None
     cityCode: str
@@ -85,7 +88,9 @@ class ActivityDetailData(BaseModel):
     title: str
     description: str
     categoryId: str
+    subCategoryId: str = ""
     categoryLabel: str = ""
+    categoryDisplay: str = ""
     startAt: datetime
     endAt: datetime | None = None
     cityCode: str
@@ -116,6 +121,7 @@ class UpdateActivityRequest(BaseModel):
     description: str | None = None
     categoryId: str | None = None
     categoryLabel: str | None = Field(default=None, max_length=32)
+    subCategoryId: str | None = Field(default=None, max_length=32)
     startAt: datetime | None = None
     endAt: datetime | None = None
     locationName: str | None = None
