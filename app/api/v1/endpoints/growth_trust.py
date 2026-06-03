@@ -68,6 +68,8 @@ from app.services.bos_storage import (
     validate_stored_photo_selfie_url,
 )
 from app.services.city_hall import EVENT_ACTIVITY_KIND, is_city_hall_activity
+from app.services.content_moderation import assert_text_content_safe
+from app.services.wechat_content_security import SCENE_COMMENT
 from app.services.growth_trust import (
     MEET_REVIEW_TAGS,
     ORGANIZER_EXPOSURE_TIERS,
@@ -455,6 +457,8 @@ async def submit_meet_review(
 
     tags = [t for t in (payload.tags or [])[:3] if t in MEET_REVIEW_TAGS]
     comment = (payload.comment or "")[:50] or None
+    if comment:
+        await assert_text_content_safe(current_user, comment, scene=SCENE_COMMENT)
 
     db.add(
         ActivityMeetReview(

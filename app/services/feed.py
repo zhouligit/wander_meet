@@ -17,6 +17,8 @@ from app.services.activity_query import effective_activity_status, to_utc
 from app.services.bos_storage import validate_stored_feed_image_url
 from app.services.city_hall import EVENT_ACTIVITY_KIND, is_city_hall_activity
 from app.services.contact_content_filter import contact_text_blocked_reason
+from app.services.content_moderation import assert_image_urls_safe, assert_text_content_safe
+from app.services.wechat_content_security import SCENE_COMMENT, SCENE_SOCIAL
 from app.services.dm_relationship import either_blocked
 from app.services.growth_trust import build_public_trust_fields
 from app.services.user_profile_fields import bio_from_user
@@ -199,9 +201,15 @@ async def create_post(
     if blocked:
         raise HTTPException(status_code=400, detail=blocked)
 
+    await assert_text_content_safe(user, text, scene=SCENE_SOCIAL)
+    if location_name:
+        await assert_text_content_safe(user, location_name, scene=SCENE_SOCIAL, contact_check=False)
+
     loc_name, loc_lat, loc_lng = _normalize_post_location(location_name, lat, lng)
     tags = [t for t in (topic_tags or []) if t in ALLOWED_TOPICS][:3]
     imgs = await _validate_images(db, user.id, images)
+    if imgs:
+        await assert_image_urls_safe(user, imgs, scene=SCENE_SOCIAL)
     await _check_daily_limit(db, user.id)
 
     row = Post(
@@ -459,6 +467,7 @@ async def add_comment(
     blocked = contact_text_blocked_reason(text)
     if blocked:
         raise HTTPException(status_code=400, detail=blocked)
+    await assert_text_content_safe(user, text, scene=SCENE_COMMENT)
 
     post = await db.scalar(select(Post).where(Post.id == post_id, Post.status == "published"))
     if not post:

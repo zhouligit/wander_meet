@@ -142,3 +142,10 @@
 - [ ] 再议：视频、@、转发、算法推荐、仅好友圈可见。
 - [ ] 新环境部署：`alembic upgrade head`（含 `0023`、`0024`）+ BOS `wm/feed/` 配置校验。
 - [ ] 按距离筛同城动态 / 附近流（lat/lng 已落库，API 未做）。
+
+### 8.3 微信小程序内容安全（提审必过）
+
+- [x] 后端：`POST /content/sec-check` → 微信 `msgSecCheck`（`app/services/wechat_content_security.py`）。
+- [x] 后端：所有 UGC 写入前二次校验（动态/评论/活动/群聊/私聊/资料/反馈/举报/互评）。
+- [x] 小程序：发布前调用 `checkContentSec`（`src/utils/contentSecurity.js`）；违规统一提示「所发布内容含违规信息，请修改后重试」。
+- [ ] 生产 `.env`：`WX_CONTENT_SEC_ENABLED=true`，且 `WX_MP_APPID` / `WX_MP_APPSECRET` 已配置（不可用 mock）。

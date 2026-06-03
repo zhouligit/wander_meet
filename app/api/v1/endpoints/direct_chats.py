@@ -16,7 +16,12 @@ from app.models.notification import Notification
 from app.models.user import User
 from app.schemas.activity import ChatMessageSender, SendMessageRequest
 from app.schemas.common import APIResponse
-from app.services.contact_content_filter import contact_text_blocked_reason
+from app.services.content_moderation import (
+    assert_text_content_safe,
+    assert_text_fields_safe,
+    moderate_send_message_request,
+)
+from app.services.wechat_content_security import SCENE_COMMENT, SCENE_PROFILE, SCENE_SOCIAL
 from app.services.chat_message_payload import build_message_row_content
 from app.services.chat_location import chat_last_message_preview, message_content_fields
 from app.services.dm_relationship import (
@@ -175,9 +180,7 @@ async def create_dm_request(
 
     intro_raw = (payload.introText or "").strip()[:500]
     if intro_raw:
-        blocked_intro = contact_text_blocked_reason(intro_raw)
-        if blocked_intro:
-            raise HTTPException(status_code=400, detail=blocked_intro)
+        await assert_text_content_safe(current_user, intro_raw, scene=SCENE_SOCIAL)
     intro = intro_raw or None
     req = DmRequest(
         activity_id=activity_pk,
@@ -541,6 +544,7 @@ async def send_direct_message(
         raise HTTPException(status_code=404, detail="Thread not found")
     await _assert_thread_member(thread, current_user.id)
 
+    await moderate_send_message_request(current_user, payload)
     msg_type, text_content, image_url = build_message_row_content(payload, current_user.id)
 
     msg = DirectMessage(

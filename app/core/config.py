@@ -157,6 +157,8 @@ class Settings(BaseSettings):
     wx_mp_appsecret: str = ""
     #: 本地/测试：不调微信，用 ``code`` 派生固定 openid（上线务必 false）
     wx_mp_use_mock: bool = False
+    #: 是否调用微信内容安全 API（msgSecCheck）；上线小程序须 true
+    wx_content_sec_enabled: bool = True
 
     #: 抖音小程序 AppID / AppSecret（``auth/douyin/login`` 调 code2session）
     dy_mp_appid: str = ""

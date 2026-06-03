@@ -15,6 +15,8 @@ from app.schemas.report import (
     ReportItem,
     ReportListData,
 )
+from app.services.content_moderation import assert_text_content_safe
+from app.services.wechat_content_security import SCENE_COMMENT
 
 router = APIRouter(tags=["reports"])
 
@@ -25,6 +27,8 @@ async def create_report(
     db: AsyncSession = Depends(get_db_session),
     current_user: User = Depends(get_current_user),
 ) -> APIResponse[ReportCreateData]:
+    if payload.detail:
+        await assert_text_content_safe(current_user, payload.detail, scene=SCENE_COMMENT)
     report = Report(
         reporter_id=current_user.id,
         target_type=payload.targetType,

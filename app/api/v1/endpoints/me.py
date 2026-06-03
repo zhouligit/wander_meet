@@ -74,6 +74,8 @@ from app.services.email_auth import user_has_email_account
 from app.services.email_validation import mask_email
 from app.services.user_phone_bind import bind_phone_to_user, mask_user_phone, user_has_phone
 from app.services.user_profile_fields import bio_from_user, tags_from_user
+from app.services.content_moderation import assert_text_content_safe, assert_text_fields_safe
+from app.services.wechat_content_security import SCENE_COMMENT, SCENE_PROFILE
 from app.services.wechat_miniapp import WechatLoginError, get_phone_number_from_code
 from app.services.bos_storage import (
     BosNotConfiguredError,
@@ -208,6 +210,7 @@ async def update_me(
         nn = (payload.nickname or "").strip()
         if not nn:
             raise HTTPException(status_code=400, detail="nickname is required when provided")
+        await assert_text_content_safe(user, nn, scene=SCENE_PROFILE)
         user.nickname = nn[:32]
     if payload.avatarUrl is not None:
         if (payload.avatarUrl or "").strip():
@@ -216,6 +219,8 @@ async def update_me(
             user.avatar_url = None
     if payload.bio is not None:
         b = (payload.bio or "").strip()
+        if b:
+            await assert_text_content_safe(user, b, scene=SCENE_PROFILE)
         user.bio = b[:2000] if b else None
     if payload.tags is not None:
         user.tags = list(payload.tags)[:20]
@@ -233,9 +238,13 @@ async def update_me(
         for x in payload.travelerRoles[:_TRAVELER_ROLE_MAX]:
             if isinstance(x, str) and x.strip():
                 roles.append(x.strip()[:48])
+        if roles:
+            await assert_text_content_safe(user, " ".join(roles), scene=SCENE_PROFILE, contact_check=False)
         user.traveler_roles = roles[:_TRAVELER_ROLE_MAX] if roles else None
     if payload.currentPlace is not None:
         cp = (payload.currentPlace or "").strip()
+        if cp:
+            await assert_text_content_safe(user, cp, scene=SCENE_PROFILE, contact_check=False)
         user.current_place = cp[:256] if cp else None
     if payload.stayKind is not None:
         sk = (payload.stayKind or "").strip()
@@ -976,6 +985,15 @@ async def create_user_feedback(
     app_ver = (payload.app_version or "").strip()[:32]
     exp = (payload.expectation or "").strip()[:500]
     note = (payload.contact_note or "").strip()[:160]
+    await assert_text_fields_safe(
+        current_user,
+        {
+            "description": payload.description,
+            "expectation": exp,
+            "contact_note": note,
+        },
+        scene=SCENE_COMMENT,
+    )
     row = UserFeedback(
         user_id=current_user.id,
         scene=payload.scene,

@@ -14,6 +14,7 @@ from app.api.v1.endpoints.pay import router as pay_router
 from app.api.v1.endpoints.reports import router as reports_router
 from app.api.v1.endpoints.users import router as users_router
 from app.api.v1.endpoints.verification import router as verification_router
+from app.api.v1.endpoints.content_security import router as content_security_router
 from app.api.v1.endpoints.feed import router as feed_router
 from app.api.v1.endpoints.growth_trust import (
     act_router as growth_trust_act_router,
@@ -40,4 +41,5 @@ api_router.include_router(growth_trust_me_router)
 api_router.include_router(growth_trust_act_router)
 api_router.include_router(growth_trust_content_router)
 api_router.include_router(feed_router)
+api_router.include_router(content_security_router)
 

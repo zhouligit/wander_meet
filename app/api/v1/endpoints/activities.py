@@ -20,6 +20,8 @@ from app.services.activity_enroll import enroll_user_in_activity
 from app.services.activity_category import normalize_activity_category
 from app.services.city_hall import EVENT_ACTIVITY_KIND, is_city_hall_activity
 from app.services.contact_content_filter import contact_text_blocked_reason
+from app.services.content_moderation import assert_text_fields_safe, moderate_send_message_request
+from app.services.wechat_content_security import SCENE_FORUM
 from app.services.chat_message_payload import build_message_row_content
 from app.services.chat_location import message_content_fields
 from app.db.session import get_db_session
@@ -531,6 +533,17 @@ async def create_activity(
         payload.categoryId, payload.categoryLabel
     )
 
+    await assert_text_fields_safe(
+        current_user,
+        {
+            "title": payload.title,
+            "description": payload.description or "",
+            "locationName": payload.locationName,
+            "addressDetail": payload.addressDetail or "",
+        },
+        scene=SCENE_FORUM,
+    )
+
     activity = Activity(
         organizer_id=current_user.id,
         title=payload.title,
@@ -957,6 +970,7 @@ async def send_message(
     activity_pk = _parse_activity_id(activity_id)
     await _assert_member_or_organizer(activity_pk, current_user.id, db)
 
+    await moderate_send_message_request(current_user, payload)
     msg_type, text_content, image_url = build_message_row_content(payload, current_user.id)
 
     message = ActivityMessage(
