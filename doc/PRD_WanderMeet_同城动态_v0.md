@@ -38,7 +38,8 @@
 | 发布同城动态 | `POST /feed/posts` | ✅ |
 | 动态可选位置 | `locationName` + `lat`/`lng`（可选；有坐标须有名） | ✅ |
 | 动态详情 | `GET /feed/posts/{id}` | ✅ |
-| 删除自己的动态 | `DELETE /me/feed/posts/{id}` | ✅（接口有，小程序未接删除入口） |
+| 删除自己的动态 | `DELETE /me/feed/posts/{id}` | ✅ |
+| 小程序 · 我的动态列表 + 删除 | `my-feed-posts`、详情页删除 | ✅ |
 | 点赞 | `POST /feed/posts/{id}/like` | ✅ |
 | 评论列表/发表 | `GET/POST /feed/posts/{id}/comments` | ✅ |
 | 动态图片上传 | `POST /me/feed/images`（BOS `wm/feed/`） | ✅ |
@@ -78,7 +79,7 @@
 | 用户资料 · 关注 + Ta 的动态 | `src/pages/user-public/user-public.vue` | ✅ |
 | 路由注册 | `src/pages.json` | ✅ |
 | 城市大群页入口 | `city-hall` | ❌ 未单独加（可从发现页进同城动态） |
-| 删除自己的动态 | — | ❌ 未接 UI |
+| 删除自己的动态 | `my-feed-posts`、详情页 | ✅ |
 | 话题筛选 UI | 列表页按 topic 筛选 | ❌ 未做（后端与发布页话题已支持） |
 | 按距离筛同城动态 / 附近流 | — | ❌ 再议（已存 lat/lng 供后续） |
 | 视频 / @ / 转发 | — | ❌ 再议 |
