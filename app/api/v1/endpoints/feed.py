@@ -103,6 +103,8 @@ async def create_city_feed_post(
         city_code=cc,
         post_kind=POST_KIND_CITY,
         location_name=payload.locationName,
+        lat=payload.lat,
+        lng=payload.lng,
         topic_tags=payload.topicTags,
         visibility=payload.visibility or "city_public",
     )

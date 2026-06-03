@@ -21,6 +21,8 @@ class FeedPostItem(BaseModel):
     content: str
     images: list[str] = Field(default_factory=list)
     locationName: str | None = None
+    lat: float | None = None
+    lng: float | None = None
     topicTags: list[str] = Field(default_factory=list)
     likeCount: int = 0
     commentCount: int = 0
@@ -46,6 +48,8 @@ class FeedPostCreateRequest(BaseModel):
     cityCode: str | None = None
     activityId: str | None = None
     locationName: str | None = None
+    lat: float | None = None
+    lng: float | None = None
     topicTags: list[str] = Field(default_factory=list, max_length=3)
     postKind: str | None = None
     visibility: str | None = None

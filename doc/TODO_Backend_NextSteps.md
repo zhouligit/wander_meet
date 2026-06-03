@@ -128,14 +128,17 @@
 ### 8.1 已实现（后端 + 小程序主链路）
 
 - [x] 迁移 `20260525_0023_city_feed`：`posts`、`post_likes`、`post_comments`、`user_follows`。
+- [x] 迁移 `20260526_0024_post_lat_lng`：动态 `lat`/`lng`（可选位置坐标）。
 - [x] V0.5：`GET/POST /activities/{id}/posts`（参与者、结束后 72h 窗口）。
 - [x] V1：`GET/POST /feed`、`GET /feed/posts/{id}`、点赞、评论、`POST /me/feed/images`、举报 `targetType=post`。
 - [x] V2：关注 API、`GET /feed?scope=following`、话题元数据、`GET /users/{id}/posts`。
 - [x] 小程序：发现页入口、同城列表/发布/详情、活动详情活动态、用户资料关注与动态列表；Mock 与 `feedImageUpload`。
+- [x] 动态可选位置：发布选点、卡片展示、地图打开；活动态预填活动地点。
 
 ### 8.2 未实现 / 再议
 
 - [ ] 动态专审运营后台（目前依赖举报 + 既有 `admin/reports`）。
 - [ ] 小程序：删除自己的动态、列表页按话题筛选、城市大群页独立入口。
 - [ ] 再议：视频、@、转发、算法推荐、仅好友圈可见。
-- [ ] 新环境部署：`alembic upgrade head`（含 `0023`）+ BOS `wm/feed/` 配置校验。
+- [ ] 新环境部署：`alembic upgrade head`（含 `0023`、`0024`）+ BOS `wm/feed/` 配置校验。
+- [ ] 按距离筛同城动态 / 附近流（lat/lng 已落库，API 未做）。

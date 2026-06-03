@@ -100,6 +100,28 @@ async def _author_payload(db: AsyncSession, user: User) -> dict:
     }
 
 
+def _normalize_post_location(
+    location_name: str | None,
+    lat: float | None,
+    lng: float | None,
+) -> tuple[str | None, float | None, float | None]:
+    name = (location_name or "").strip()[:128] or None
+    if lat is None and lng is None:
+        return name, None, None
+    if lat is None or lng is None:
+        raise HTTPException(status_code=400, detail="位置坐标不完整")
+    if not name:
+        raise HTTPException(status_code=400, detail="请提供位置名称")
+    try:
+        la = float(lat)
+        ln = float(lng)
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail="位置坐标无效") from exc
+    if not (-90.0 <= la <= 90.0 and -180.0 <= ln <= 180.0):
+        raise HTTPException(status_code=400, detail="位置坐标无效")
+    return name, la, ln
+
+
 async def _post_to_item(
     db: AsyncSession,
     post: Post,
@@ -117,6 +139,8 @@ async def _post_to_item(
         "content": post.content,
         "images": list(post.images or []),
         "locationName": post.location_name,
+        "lat": float(post.lat) if post.lat is not None else None,
+        "lng": float(post.lng) if post.lng is not None else None,
         "topicTags": list(post.topic_tags or []),
         "likeCount": post.like_count or 0,
         "commentCount": post.comment_count or 0,
@@ -161,6 +185,8 @@ async def create_post(
     post_kind: str,
     activity_id: int | None = None,
     location_name: str | None = None,
+    lat: float | None = None,
+    lng: float | None = None,
     topic_tags: list[str] | None = None,
     visibility: str = "city_public",
 ) -> Post:
@@ -173,6 +199,7 @@ async def create_post(
     if blocked:
         raise HTTPException(status_code=400, detail=blocked)
 
+    loc_name, loc_lat, loc_lng = _normalize_post_location(location_name, lat, lng)
     tags = [t for t in (topic_tags or []) if t in ALLOWED_TOPICS][:3]
     imgs = await _validate_images(db, user.id, images)
     await _check_daily_limit(db, user.id)
@@ -184,7 +211,9 @@ async def create_post(
         activity_id=activity_id,
         content=text or "（图片）",
         images=imgs or None,
-        location_name=(location_name or "").strip()[:128] or None,
+        location_name=loc_name,
+        lat=loc_lat,
+        lng=loc_lng,
         topic_tags=tags or None,
         visibility=visibility,
         status="published",
@@ -196,7 +225,15 @@ async def create_post(
 
 
 async def create_activity_post(
-    db: AsyncSession, user: User, activity_id: int, content: str, images: list[str]
+    db: AsyncSession,
+    user: User,
+    activity_id: int,
+    content: str,
+    images: list[str],
+    *,
+    location_name: str | None = None,
+    lat: float | None = None,
+    lng: float | None = None,
 ) -> Post:
     activity = await db.scalar(select(Activity).where(Activity.id == activity_id))
     if not activity:
@@ -226,6 +263,9 @@ async def create_activity_post(
         city_code=activity.city_code,
         post_kind=POST_KIND_ACTIVITY,
         activity_id=activity_id,
+        location_name=location_name,
+        lat=lat,
+        lng=lng,
         topic_tags=["activity_recap"],
     )
 

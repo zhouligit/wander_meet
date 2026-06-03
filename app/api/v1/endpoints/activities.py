@@ -688,6 +688,9 @@ async def create_activity_post_endpoint(
         activity_pk,
         payload.content,
         payload.images,
+        location_name=payload.locationName,
+        lat=payload.lat,
+        lng=payload.lng,
     )
     return APIResponse(data=FeedPostCreateData(postId=f"post_{row.id}"))
 

@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import DateTime, Integer, JSON, String, Text, func
+from sqlalchemy import DateTime, Integer, JSON, Numeric, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -18,6 +18,8 @@ class Post(Base):
     content: Mapped[str] = mapped_column(Text())
     images: Mapped[list | None] = mapped_column(JSON, nullable=True)
     location_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    lat: Mapped[float | None] = mapped_column(Numeric(10, 7), nullable=True)
+    lng: Mapped[float | None] = mapped_column(Numeric(10, 7), nullable=True)
     topic_tags: Mapped[list | None] = mapped_column(JSON, nullable=True)
     visibility: Mapped[str] = mapped_column(String(16), default="city_public")
     status: Mapped[str] = mapped_column(String(16), default="published", index=True)
