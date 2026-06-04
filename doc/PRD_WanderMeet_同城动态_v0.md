@@ -74,7 +74,7 @@
 | 发布选位置 | 复用 `location-picker?from=feed` | ✅ |
 | 动态卡片/详情展示位置 | `FeedPostCard`、点开地图 | ✅ |
 | 详情 + 评论 + 举报 | `src/pages/feed-detail/feed-detail.vue` | ✅ |
-| 发现页入口 | `src/pages/discover/discover.vue` | ✅ |
+| 发现页入口 | `src/pages/discover/discover.vue`（**同城动态 Tab 主页面**） | ✅ |
 | 活动详情 · 活动动态区 | `src/pages/activity-detail/activity-detail.vue` | ✅ |
 | 用户资料 · 关注 + Ta 的动态 | `src/pages/user-public/user-public.vue` | ✅ |
 | 路由注册 | `src/pages.json` | ✅ |
