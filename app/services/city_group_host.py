@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from datetime import UTC, datetime, timedelta
 
 from fastapi import HTTPException
@@ -72,11 +73,17 @@ def _city_name_from_catalog(city_code: str) -> str:
     return cc
 
 
+def _city_short_name_for_host_badge(city_name: str) -> str:
+    name = (city_name or "").strip()
+    short = re.sub(r"(特别行政区|自治州|地区|盟|市)$", "", name)
+    return short or name
+
+
 def host_badge_label(city_code: str, role: str) -> str:
-    name = _city_name_from_catalog(city_code)
+    name = _city_short_name_for_host_badge(_city_name_from_catalog(city_code))
     if role == HOST_ROLE_OWNER:
-        return f"{name}群主"
-    return f"{name}副群主"
+        return f"{name}城主"
+    return f"{name}副城主"
 
 
 async def get_city_hall_by_code(db: AsyncSession, city_code: str) -> Activity | None:
