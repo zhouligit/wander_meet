@@ -15,14 +15,23 @@ from app.api.deps import get_admin_user, get_current_user, get_optional_user
 from app.db.session import get_db_session
 from app.models.activity import Activity
 from app.models.activity_enrollment import ActivityEnrollment
-from app.models.city_group_host import CityGroupHost
+from app.models.city_group_host import CityGroupHost, CityGroupHostApplication
 from app.models.user import User
 from app.schemas.city_group import (
     AdminAppointCityGroupHostData,
     AdminAppointCityGroupHostRequest,
     AdminCityGroupHostItem,
     AdminCityGroupHostListData,
+    AdminCityGroupHostApplicationListData,
+    AdminCityGroupHostApplicationItem,
+    AdminRejectHostApplicationRequest,
+    AdminSweepInactiveHostsData,
     AdminUpdateCityGroupHostRequest,
+    CityGroupHostApplicationData,
+    CityGroupHostApplicationRequest,
+    CityGroupHostEligibilityData,
+    CityGroupNominateDeputyRequest,
+    CityGroupRecommendActivityRequest,
     CityGroupHostContextData,
     CityGroupHostDeleteMessageRequest,
     CityGroupHostMuteData,
@@ -39,22 +48,33 @@ from app.schemas.city_group import (
 )
 from app.schemas.common import APIResponse
 from app.schemas.datetime_iso import datetime_to_rfc3339_utc_z
+from app.schemas.activity import ChatMessageItem, ChatMessageSender
+from app.services.chat_location import message_content_fields
 from app.services.activity_enroll import enroll_user_in_activity
 from app.services.china_province_meta import province_display_name
 from app.services.city_group_host import (
     HOST_ROLE_OWNER,
+    HOST_STATUS_ACTIVE,
     admin_appoint_host,
     admin_update_host_status,
+    approve_host_application,
     assert_active_host,
     build_city_group_profile,
+    enrich_profile_with_eligibility,
     get_active_hosts,
     get_city_hall_by_code,
+    get_host_application_eligibility,
     get_owner_host,
     host_delete_message,
     host_mute_member,
+    host_recommend_activity,
     host_summary_from_row,
+    owner_nominate_deputy,
     parse_public_user_id,
     patch_host_profile,
+    reject_host_application,
+    submit_owner_application,
+    sweep_inactive_owners,
 )
 from app.services.city_hall import (
     CITY_HALL_ACTIVITY_KIND,
@@ -106,8 +126,11 @@ async def _lookup_host_fields(
     db: AsyncSession,
     city_code: str,
     current_user_id: int | None,
+    *,
+    member_count: int = 0,
 ) -> dict:
-    owner_row = await get_owner_host(db, city_code)
+    cc = normalize_city_code(city_code)
+    owner_row = await get_owner_host(db, cc)
     owner = None
     announcement = None
     welcome_text = None
@@ -119,15 +142,22 @@ async def _lookup_host_fields(
         announcement = owner_row.announcement
         welcome_text = owner_row.welcome_text
     if current_user_id:
-        for h, _u in await get_active_hosts(db, city_code):
+        for h, _u in await get_active_hosts(db, cc):
             if h.user_id == current_user_id:
                 current_user_host_role = h.role
                 break
+    elig = await get_host_application_eligibility(
+        db,
+        city_code=cc,
+        member_count=member_count,
+        user_id=current_user_id,
+    )
     return {
         "owner": owner,
         "announcement": announcement,
         "welcomeText": welcome_text,
         "currentUserHostRole": current_user_host_role,
+        **elig,
     }
 
 
@@ -245,8 +275,9 @@ async def lookup_city_hall(
         request.state.user_id = optional_user.id
 
     row = await get_city_hall_by_code(db, cc)
+    uid = optional_user.id if optional_user else None
     if not row:
-        host_fields = await _lookup_host_fields(db, cc, optional_user.id if optional_user else None)
+        host_fields = await _lookup_host_fields(db, cc, uid, member_count=0)
         return APIResponse(
             data=CityHallLookupData(
                 exists=False,
@@ -272,7 +303,7 @@ async def lookup_city_hall(
         )
         joined = en is not None
 
-    host_fields = await _lookup_host_fields(db, cc, optional_user.id if optional_user else None)
+    host_fields = await _lookup_host_fields(db, cc, uid, member_count=cnt)
     return APIResponse(
         data=CityHallLookupData(
             exists=True,
@@ -312,7 +343,28 @@ async def city_group_profile(
         activity_id=f"act_{row.id}" if row else None,
         current_user_id=optional_user.id if optional_user else None,
     )
+    profile = await enrich_profile_with_eligibility(
+        db, profile, current_user_id=optional_user.id if optional_user else None
+    )
     return APIResponse(data=CityGroupProfileData(**profile))
+
+
+@router.get("/host-application-eligibility")
+async def city_group_host_application_eligibility(
+    cityCode: str = Query(..., min_length=1, max_length=32),
+    db: AsyncSession = Depends(get_db_session),
+    optional_user: User | None = Depends(get_optional_user),
+) -> APIResponse[CityGroupHostEligibilityData]:
+    cc = normalize_city_code(cityCode)
+    row = await get_city_hall_by_code(db, cc)
+    cnt = await _member_count(db, row.id) if row else 0
+    data = await get_host_application_eligibility(
+        db,
+        city_code=cc,
+        member_count=cnt,
+        user_id=optional_user.id if optional_user else None,
+    )
+    return APIResponse(data=CityGroupHostEligibilityData(**data))
 
 
 @router.get("/host-context")
@@ -387,7 +439,97 @@ async def patch_my_host_profile(
         activity_id=f"act_{row.id}" if row else None,
         current_user_id=current_user.id,
     )
+    profile = await enrich_profile_with_eligibility(
+        db, profile, current_user_id=current_user.id
+    )
     return APIResponse(data=CityGroupProfileData(**profile))
+
+
+@router.post("/me/host-applications")
+async def submit_my_host_application(
+    request: Request,
+    payload: CityGroupHostApplicationRequest,
+    db: AsyncSession = Depends(get_db_session),
+    current_user: User = Depends(get_current_user),
+) -> APIResponse[CityGroupHostApplicationData]:
+    request.state.user_id = current_user.id
+    row = await get_city_hall_by_code(db, payload.cityCode)
+    cnt = await _member_count(db, row.id) if row else 0
+    app = await submit_owner_application(
+        db,
+        current_user,
+        city_code=payload.cityCode,
+        intro_text=payload.introText,
+        member_count=cnt,
+    )
+    await db.commit()
+    return APIResponse(
+        data=CityGroupHostApplicationData(
+            applicationId=app.id,
+            cityCode=app.city_code,
+            status=app.status,
+            applicationType=app.application_type,
+        )
+    )
+
+
+@router.post("/me/nominate-deputy")
+async def nominate_city_deputy(
+    request: Request,
+    payload: CityGroupNominateDeputyRequest,
+    db: AsyncSession = Depends(get_db_session),
+    current_user: User = Depends(get_current_user),
+) -> APIResponse[CityGroupHostApplicationData]:
+    request.state.user_id = current_user.id
+    app = await owner_nominate_deputy(
+        db,
+        current_user,
+        city_code=payload.cityCode,
+        target_user_id=payload.userId,
+    )
+    await db.commit()
+    return APIResponse(
+        data=CityGroupHostApplicationData(
+            applicationId=app.id,
+            cityCode=app.city_code,
+            status=app.status,
+            applicationType=app.application_type,
+        )
+    )
+
+
+@router.post("/me/recommend-activity")
+async def recommend_activity_to_city_group(
+    request: Request,
+    payload: CityGroupRecommendActivityRequest,
+    db: AsyncSession = Depends(get_db_session),
+    current_user: User = Depends(get_current_user),
+) -> APIResponse[ChatMessageItem]:
+    request.state.user_id = current_user.id
+    message = await host_recommend_activity(
+        db,
+        current_user,
+        city_code=payload.cityCode,
+        activity_id=payload.activityId,
+    )
+    host = await assert_active_host(db, payload.cityCode, current_user.id)
+    await db.commit()
+    activity_pk = message.activity_id
+    return APIResponse(
+        data=ChatMessageItem(
+            messageId=f"msg_{message.id}",
+            activityId=f"act_{activity_pk}",
+            sender=ChatMessageSender(
+                userId=f"u_{current_user.id}",
+                nickname=current_user.nickname,
+                avatarUrl=current_user.avatar_url,
+            ),
+            msgType=message.msg_type,
+            **message_content_fields(message.msg_type, message.text_content, message.image_url),
+            createdAt=message.created_at,
+            senderHostRole=host.role,
+        )
+    )
 
 
 @router.post("/me/messages/{message_id}/delete")
@@ -576,3 +718,99 @@ async def admin_patch_city_group_host(
             status=host.status,
         )
     )
+
+
+@admin_router.get("/applications")
+async def admin_list_host_applications(
+    status: str | None = Query("pending"),
+    page: int = Query(1, ge=1),
+    pageSize: int = Query(20, ge=1, le=50),
+    db: AsyncSession = Depends(get_db_session),
+    _: User = Depends(get_admin_user),
+) -> APIResponse[AdminCityGroupHostApplicationListData]:
+    filters = []
+    if status:
+        filters.append(CityGroupHostApplication.status == status)
+    total = int(
+        await db.scalar(
+            select(func.count(CityGroupHostApplication.id)).where(*filters)
+        )
+        or 0
+    )
+    rows = await db.execute(
+        select(CityGroupHostApplication, User)
+        .join(User, User.id == CityGroupHostApplication.user_id)
+        .where(*filters)
+        .order_by(CityGroupHostApplication.id.desc())
+        .offset((page - 1) * pageSize)
+        .limit(pageSize)
+    )
+    items = [
+        AdminCityGroupHostApplicationItem(
+            applicationId=app.id,
+            cityCode=app.city_code,
+            userId=f"u_{u.id}",
+            nickname=u.nickname,
+            applicationType=app.application_type,
+            status=app.status,
+            introText=app.intro_text,
+            nominatorUserId=f"u_{app.nominator_user_id}"
+            if app.nominator_user_id
+            else None,
+            createdAt=datetime_to_rfc3339_utc_z(app.created_at) or "",
+        )
+        for app, u in rows.all()
+    ]
+    return APIResponse(
+        data=AdminCityGroupHostApplicationListData(
+            list=items, total=total, page=page, pageSize=pageSize
+        )
+    )
+
+
+@admin_router.post("/applications/{application_id}/approve")
+async def admin_approve_host_application(
+    application_id: int,
+    db: AsyncSession = Depends(get_db_session),
+    admin_user: User = Depends(get_admin_user),
+) -> APIResponse[AdminAppointCityGroupHostData]:
+    host = await approve_host_application(
+        db, application_id, reviewer_admin_id=admin_user.id
+    )
+    await db.commit()
+    return APIResponse(
+        data=AdminAppointCityGroupHostData(
+            id=host.id,
+            cityCode=host.city_code,
+            userId=f"u_{host.user_id}",
+            role=host.role,
+            status=host.status,
+        )
+    )
+
+
+@admin_router.post("/applications/{application_id}/reject")
+async def admin_reject_host_application(
+    application_id: int,
+    payload: AdminRejectHostApplicationRequest,
+    db: AsyncSession = Depends(get_db_session),
+    admin_user: User = Depends(get_admin_user),
+) -> APIResponse[dict]:
+    await reject_host_application(
+        db,
+        application_id,
+        reviewer_admin_id=admin_user.id,
+        review_note=payload.reviewNote,
+    )
+    await db.commit()
+    return APIResponse(data={"ok": True})
+
+
+@admin_router.post("/sweep-inactive")
+async def admin_sweep_inactive_hosts(
+    db: AsyncSession = Depends(get_db_session),
+    _: User = Depends(get_admin_user),
+) -> APIResponse[AdminSweepInactiveHostsData]:
+    count = await sweep_inactive_owners(db)
+    await db.commit()
+    return APIResponse(data=AdminSweepInactiveHostsData(resignedCount=count))

@@ -27,6 +27,11 @@ class CityHallLookupData(BaseModel):
     announcement: str | None = None
     welcomeText: str | None = None
     currentUserHostRole: str | None = None
+    canApplyForOwner: bool = False
+    denyReason: str | None = None
+    hostApplicationStatus: str | None = None
+    ownerVacantDays: int = 0
+    applyMinMembers: int = 100
 
 
 class CityHallJoinData(BaseModel):
@@ -74,6 +79,11 @@ class CityGroupProfileData(BaseModel):
     announcement: str | None = None
     welcomeText: str | None = None
     currentUserHostRole: str | None = None
+    canApplyForOwner: bool = False
+    denyReason: str | None = None
+    hostApplicationStatus: str | None = None
+    ownerVacantDays: int = 0
+    applyMinMembers: int = 100
 
 
 class CityGroupHostContextData(BaseModel):
@@ -147,3 +157,60 @@ class AdminAppointCityGroupHostData(BaseModel):
 
 class AdminUpdateCityGroupHostRequest(BaseModel):
     status: str = Field(pattern="^(active|suspended|resigned)$")
+
+
+class CityGroupHostEligibilityData(BaseModel):
+    canApplyForOwner: bool = False
+    denyReason: str | None = None
+    hostApplicationStatus: str | None = None
+    ownerVacantDays: int = 0
+    applyMinMembers: int = 100
+
+
+class CityGroupHostApplicationRequest(BaseModel):
+    cityCode: str = Field(min_length=1, max_length=32)
+    introText: str | None = Field(default=None, max_length=500)
+
+
+class CityGroupHostApplicationData(BaseModel):
+    applicationId: int
+    cityCode: str
+    status: str
+    applicationType: str
+
+
+class CityGroupNominateDeputyRequest(BaseModel):
+    cityCode: str = Field(min_length=1, max_length=32)
+    userId: str = Field(min_length=1, max_length=32)
+
+
+class CityGroupRecommendActivityRequest(BaseModel):
+    cityCode: str = Field(min_length=1, max_length=32)
+    activityId: str = Field(min_length=1, max_length=32)
+
+
+class AdminCityGroupHostApplicationItem(BaseModel):
+    applicationId: int
+    cityCode: str
+    userId: str
+    nickname: str
+    applicationType: str
+    status: str
+    introText: str | None = None
+    nominatorUserId: str | None = None
+    createdAt: str
+
+
+class AdminCityGroupHostApplicationListData(BaseModel):
+    list: list[AdminCityGroupHostApplicationItem]
+    total: int
+    page: int
+    pageSize: int
+
+
+class AdminRejectHostApplicationRequest(BaseModel):
+    reviewNote: str | None = Field(default=None, max_length=256)
+
+
+class AdminSweepInactiveHostsData(BaseModel):
+    resignedCount: int

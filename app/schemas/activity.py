@@ -169,6 +169,8 @@ class ChatMessageItem(BaseModel):
     lng: float | None = None
     createdAt: datetime
     senderHostRole: str | None = None
+    recActivityId: str | None = None
+    recActivityTitle: str | None = None
 
     @field_serializer("createdAt")
     def _ser_created_at(self, v: datetime) -> str:

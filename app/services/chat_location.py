@@ -6,6 +6,7 @@ import json
 
 from fastapi import HTTPException
 
+from app.services.chat_activity_rec import decode_activity_rec_payload
 from app.schemas.activity import SendMessageRequest
 
 _LOCATION_NAME_MAX = 120
@@ -95,6 +96,8 @@ def message_content_fields(
             "address": None,
             "lat": None,
             "lng": None,
+            "recActivityId": None,
+            "recActivityTitle": None,
         }
     if msg_type == "sticker":
         return {
@@ -105,6 +108,8 @@ def message_content_fields(
             "address": None,
             "lat": None,
             "lng": None,
+            "recActivityId": None,
+            "recActivityTitle": None,
         }
     if msg_type == "image":
         return {
@@ -115,6 +120,8 @@ def message_content_fields(
             "address": None,
             "lat": None,
             "lng": None,
+            "recActivityId": None,
+            "recActivityTitle": None,
         }
     if msg_type == "location":
         loc = decode_location_payload(text_content) or {}
@@ -126,6 +133,21 @@ def message_content_fields(
             "address": loc.get("address"),
             "lat": loc.get("lat"),
             "lng": loc.get("lng"),
+            "recActivityId": None,
+            "recActivityTitle": None,
+        }
+    if msg_type == "activity_rec":
+        rec = decode_activity_rec_payload(text_content) or {}
+        return {
+            "text": None,
+            "stickerId": None,
+            "imageUrl": None,
+            "locationName": None,
+            "address": None,
+            "lat": None,
+            "lng": None,
+            "recActivityId": rec.get("activityId"),
+            "recActivityTitle": rec.get("activityTitle"),
         }
     return {
         "text": text_content,
@@ -135,6 +157,8 @@ def message_content_fields(
         "address": None,
         "lat": None,
         "lng": None,
+        "recActivityId": None,
+        "recActivityTitle": None,
     }
 
 
@@ -151,4 +175,9 @@ def chat_last_message_preview(msg_type: str, text_content: str | None, image_url
             name = str(loc["locationName"])
             return f"[位置] {name[:24]}" if name else "[位置]"
         return "[位置]"
+    if msg_type == "activity_rec":
+        rec = decode_activity_rec_payload(text_content)
+        if rec and rec.get("activityTitle"):
+            return f"[活动] {rec['activityTitle'][:24]}"
+        return "[活动推荐]"
     return "[消息]"

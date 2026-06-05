@@ -24,6 +24,27 @@ class CityGroupHost(Base):
     announcement_updated_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    last_active_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+
+class CityGroupHostApplication(Base):
+    __tablename__ = "city_group_host_applications"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    city_code: Mapped[str] = mapped_column(String(32), index=True)
+    user_id: Mapped[int] = mapped_column(index=True)
+    application_type: Mapped[str] = mapped_column(String(16))
+    status: Mapped[str] = mapped_column(String(16), default="pending")
+    intro_text: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    nominator_user_id: Mapped[int | None] = mapped_column(nullable=True)
+    reviewer_admin_id: Mapped[int | None] = mapped_column(nullable=True)
+    review_note: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class CityGroupHostAction(Base):
