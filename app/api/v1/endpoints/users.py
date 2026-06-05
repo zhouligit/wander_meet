@@ -14,6 +14,8 @@ from app.models.user import User
 from app.models.user_verification import UserVerification
 from app.schemas.common import APIResponse
 from app.schemas.user_public import UserDmContextData, UserPublicProfileData
+from app.schemas.city_group import CityHostBadgeItem
+from app.services.city_group_host import list_city_host_badges
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -171,6 +173,7 @@ async def get_user_public_profile(
     if pub_g is not None and pub_g not in ("male", "female", "unspecified"):
         pub_g = None
     trust_fields = await build_public_trust_fields(db, target)
+    host_badges = await list_city_host_badges(db, uid)
     data = UserPublicProfileData(
         userId=f"u_{target.id}",
         nickname=target.nickname,
@@ -180,6 +183,7 @@ async def get_user_public_profile(
         tags=tags_from_user(target),
         verificationBadge=verification_badge,
         organizedCount=int(organized or 0),
+        cityHostBadges=[CityHostBadgeItem(**b) for b in host_badges],
         **trust_fields,
     )
     return APIResponse(data=data)

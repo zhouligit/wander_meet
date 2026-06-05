@@ -1,5 +1,7 @@
 from pydantic import BaseModel, Field
 
+from app.schemas.city_group import CityHostBadgeItem
+
 
 class UserPublicProfileData(BaseModel):
     """对外展示的用户资料（查看他人主页 / 发起人详情）。"""
@@ -18,6 +20,7 @@ class UserPublicProfileData(BaseModel):
     showMeetCount: bool = True
     badges: list[str] = Field(default_factory=list)
     premiumBadge: bool = False
+    cityHostBadges: list[CityHostBadgeItem] = Field(default_factory=list)
 
 
 class UserDmContextData(BaseModel):

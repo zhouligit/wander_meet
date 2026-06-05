@@ -19,6 +19,11 @@ from app.services.activity_query import (
 from app.services.activity_enroll import enroll_user_in_activity
 from app.services.activity_category import category_display_name, normalize_activity_category
 from app.services.city_hall import EVENT_ACTIVITY_KIND, is_city_hall_activity
+from app.services.city_group_host import (
+    build_host_role_map,
+    city_code_for_activity,
+    is_user_muted_in_city,
+)
 from app.services.contact_content_filter import contact_text_blocked_reason
 from app.services.content_moderation import assert_text_fields_safe, moderate_send_message_request
 from app.services.wechat_content_security import SCENE_FORUM
@@ -931,10 +936,20 @@ async def get_messages(
     await _assert_member_or_organizer(activity_pk, current_user.id, db)
     _ = direction
 
+    activity = await db.scalar(select(Activity).where(Activity.id == activity_pk))
+    host_role_map: dict[int, str] = {}
+    if activity and is_city_hall_activity(activity):
+        cc = await city_code_for_activity(db, activity)
+        if cc:
+            host_role_map = await build_host_role_map(db, cc)
+
     base = (
         select(ActivityMessage, User)
         .join(User, User.id == ActivityMessage.sender_id)
-        .where(ActivityMessage.activity_id == activity_pk)
+        .where(
+            ActivityMessage.activity_id == activity_pk,
+            ActivityMessage.deleted_at.is_(None),
+        )
     )
 
     if after:
@@ -969,6 +984,7 @@ async def get_messages(
             msgType=msg.msg_type,
             **message_content_fields(msg.msg_type, msg.text_content, msg.image_url),
             createdAt=msg.created_at,
+            senderHostRole=host_role_map.get(user.id),
         )
         for msg, user in rows
     ]
@@ -985,6 +1001,12 @@ async def send_message(
 ) -> APIResponse[ChatMessageItem]:
     activity_pk = _parse_activity_id(activity_id)
     await _assert_member_or_organizer(activity_pk, current_user.id, db)
+
+    activity = await db.scalar(select(Activity).where(Activity.id == activity_pk))
+    if activity and is_city_hall_activity(activity):
+        cc = await city_code_for_activity(db, activity)
+        if cc and await is_user_muted_in_city(db, cc, current_user.id):
+            raise HTTPException(status_code=403, detail="You are muted in this city group")
 
     await moderate_send_message_request(current_user, payload)
     msg_type, text_content, image_url = build_message_row_content(payload, current_user.id)
