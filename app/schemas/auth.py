@@ -13,14 +13,17 @@ class SendSMSCodeData(BaseModel):
 class SMSLoginRequest(BaseModel):
     phone: str = Field(min_length=11, max_length=20)
     code: str = Field(min_length=4, max_length=8)
+    acquisitionSource: str | None = Field(default=None, max_length=64)
 
 
 class WechatLoginRequest(BaseModel):
     code: str = Field(min_length=1, max_length=128)
+    acquisitionSource: str | None = Field(default=None, max_length=64)
 
 
 class DouyinLoginRequest(BaseModel):
     code: str = Field(min_length=1, max_length=128)
+    acquisitionSource: str | None = Field(default=None, max_length=64)
 
 
 class EmailRegisterRequest(BaseModel):

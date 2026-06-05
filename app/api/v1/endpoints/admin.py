@@ -10,6 +10,7 @@ from app.db.session import get_db_session
 from app.models.activity import Activity
 from app.models.growth_trust import PhotoVerification
 from app.models.user import User
+from app.schemas.admin_acquisition import AdminAcquisitionStatsData, AdminAcquisitionStatItem
 from app.schemas.admin_photo_verify import (
     AdminPhotoVerificationActionData,
     AdminPhotoVerificationItem,
@@ -258,6 +259,52 @@ async def admin_list_photo_verifications(
     return APIResponse(
         data=AdminPhotoVerificationListData(
             list=items, total=total, page=page, pageSize=pageSize
+        )
+    )
+
+
+@router.get("/acquisition-stats")
+async def admin_acquisition_stats(
+    db: AsyncSession = Depends(get_db_session),
+    _: User = Depends(get_admin_user),
+) -> APIResponse[AdminAcquisitionStatsData]:
+    total = int(await db.scalar(select(func.count(User.id))) or 0)
+    rows = await db.execute(
+        select(User.acquisition_source, func.count(User.id))
+        .group_by(User.acquisition_source)
+        .order_by(func.count(User.id).desc())
+    )
+    with_source = 0
+    without_source = 0
+    items: list[AdminAcquisitionStatItem] = []
+    for source, cnt in rows.all():
+        n = int(cnt or 0)
+        if source:
+            with_source += n
+            items.append(
+                AdminAcquisitionStatItem(
+                    source=str(source),
+                    count=n,
+                    pct=round(n / total * 100, 2) if total else 0.0,
+                )
+            )
+        else:
+            without_source += n
+    if without_source:
+        items.append(
+            AdminAcquisitionStatItem(
+                source="(未记录)",
+                count=without_source,
+                pct=round(without_source / total * 100, 2) if total else 0.0,
+            )
+        )
+    items.sort(key=lambda x: x.count, reverse=True)
+    return APIResponse(
+        data=AdminAcquisitionStatsData(
+            totalUsers=total,
+            withSource=with_source,
+            withoutSource=without_source,
+            items=items,
         )
     )
 
