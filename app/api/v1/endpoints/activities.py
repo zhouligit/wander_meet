@@ -26,7 +26,12 @@ from app.services.city_group_host import (
 )
 from app.services.contact_content_filter import contact_text_blocked_reason
 from app.services.content_moderation import assert_text_fields_safe, moderate_send_message_request
-from app.services.wechat_content_security import SCENE_FORUM
+from app.services.wechat_content_security import SCENE_FORUM, SCENE_SOCIAL
+from app.services.chat_chain_signup import (
+    add_or_update_entry,
+    close_chain,
+    remove_entry,
+)
 from app.services.chat_message_payload import build_message_row_content
 from app.services.chat_location import message_content_fields
 from app.db.session import get_db_session
@@ -63,6 +68,7 @@ from app.schemas.activity import (
     CreateActivityRequest,
     EnrollmentData,
     MyEnrollment,
+    ChainSignupEntryRequest,
     SendMessageRequest,
     UpdateActivityRequest,
 )
@@ -1009,7 +1015,9 @@ async def send_message(
             raise HTTPException(status_code=403, detail="You are muted in this city group")
 
     await moderate_send_message_request(current_user, payload)
-    msg_type, text_content, image_url = build_message_row_content(payload, current_user.id)
+    msg_type, text_content, image_url = build_message_row_content(
+        payload, current_user.id, nickname=current_user.nickname
+    )
 
     message = ActivityMessage(
         activity_id=activity_pk,
@@ -1040,6 +1048,140 @@ async def send_message(
             createdAt=message.created_at or datetime.now(UTC),
         )
     )
+
+
+async def _chain_message_or_404(
+    db: AsyncSession, activity_pk: int, message_id: str
+) -> ActivityMessage:
+    msg_pk = _parse_message_cursor(message_id)
+    message = await db.scalar(
+        select(ActivityMessage).where(
+            ActivityMessage.id == msg_pk,
+            ActivityMessage.activity_id == activity_pk,
+            ActivityMessage.deleted_at.is_(None),
+        )
+    )
+    if not message or message.msg_type != "chain_signup":
+        raise HTTPException(status_code=404, detail="Chain signup message not found")
+    return message
+
+
+def _chat_message_item(
+    msg: ActivityMessage,
+    user: User,
+    activity_pk: int,
+    host_role_map: dict[int, str] | None = None,
+) -> ChatMessageItem:
+    return ChatMessageItem(
+        messageId=f"msg_{msg.id}",
+        activityId=f"act_{activity_pk}",
+        sender=ChatMessageSender(
+            userId=f"u_{user.id}",
+            nickname=user.nickname,
+            avatarUrl=user.avatar_url,
+        ),
+        msgType=msg.msg_type,
+        **message_content_fields(msg.msg_type, msg.text_content, msg.image_url),
+        createdAt=msg.created_at or datetime.now(UTC),
+        senderHostRole=(host_role_map or {}).get(user.id),
+    )
+
+
+async def _host_role_map_for_activity(db: AsyncSession, activity: Activity | None) -> dict[int, str]:
+    if not activity or not is_city_hall_activity(activity):
+        return {}
+    cc = await city_code_for_activity(db, activity)
+    if not cc:
+        return {}
+    return await build_host_role_map(db, cc)
+
+
+@router.post("/{activity_id}/messages/{message_id}/chain/entries")
+async def chain_signup_join(
+    activity_id: str,
+    message_id: str,
+    payload: ChainSignupEntryRequest,
+    db: AsyncSession = Depends(get_db_session),
+    current_user: User = Depends(get_current_user),
+) -> APIResponse[ChatMessageItem]:
+    activity_pk = _parse_activity_id(activity_id)
+    await _assert_member_or_organizer(activity_pk, current_user.id, db)
+    activity = await db.scalar(select(Activity).where(Activity.id == activity_pk))
+    if activity and is_city_hall_activity(activity):
+        cc = await city_code_for_activity(db, activity)
+        if cc and await is_user_muted_in_city(db, cc, current_user.id):
+            raise HTTPException(status_code=403, detail="You are muted in this city group")
+
+    await assert_text_fields_safe(
+        current_user,
+        {"note": payload.note},
+        scene=SCENE_SOCIAL,
+    )
+
+    message = await _chain_message_or_404(db, activity_pk, message_id)
+    message.text_content = add_or_update_entry(
+        message.text_content,
+        user_id=current_user.id,
+        nickname=current_user.nickname,
+        note=payload.note or "",
+    )
+    await db.commit()
+    await db.refresh(message)
+
+    sender = await db.scalar(select(User).where(User.id == message.sender_id))
+    if not sender:
+        raise HTTPException(status_code=500, detail="Sender not found")
+    host_role_map = await _host_role_map_for_activity(db, activity)
+    return APIResponse(data=_chat_message_item(message, sender, activity_pk, host_role_map))
+
+
+@router.delete("/{activity_id}/messages/{message_id}/chain/entries/me")
+async def chain_signup_leave(
+    activity_id: str,
+    message_id: str,
+    db: AsyncSession = Depends(get_db_session),
+    current_user: User = Depends(get_current_user),
+) -> APIResponse[ChatMessageItem]:
+    activity_pk = _parse_activity_id(activity_id)
+    await _assert_member_or_organizer(activity_pk, current_user.id, db)
+    activity = await db.scalar(select(Activity).where(Activity.id == activity_pk))
+
+    message = await _chain_message_or_404(db, activity_pk, message_id)
+    message.text_content = remove_entry(message.text_content, user_id=current_user.id)
+    await db.commit()
+    await db.refresh(message)
+
+    sender = await db.scalar(select(User).where(User.id == message.sender_id))
+    if not sender:
+        raise HTTPException(status_code=500, detail="Sender not found")
+    host_role_map = await _host_role_map_for_activity(db, activity)
+    return APIResponse(data=_chat_message_item(message, sender, activity_pk, host_role_map))
+
+
+@router.post("/{activity_id}/messages/{message_id}/chain/close")
+async def chain_signup_close(
+    activity_id: str,
+    message_id: str,
+    db: AsyncSession = Depends(get_db_session),
+    current_user: User = Depends(get_current_user),
+) -> APIResponse[ChatMessageItem]:
+    activity_pk = _parse_activity_id(activity_id)
+    await _assert_member_or_organizer(activity_pk, current_user.id, db)
+    activity = await db.scalar(select(Activity).where(Activity.id == activity_pk))
+
+    message = await _chain_message_or_404(db, activity_pk, message_id)
+    if message.sender_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Only chain creator can close")
+
+    message.text_content = close_chain(message.text_content)
+    await db.commit()
+    await db.refresh(message)
+
+    sender = await db.scalar(select(User).where(User.id == message.sender_id))
+    if not sender:
+        raise HTTPException(status_code=500, detail="Sender not found")
+    host_role_map = await _host_role_map_for_activity(db, activity)
+    return APIResponse(data=_chat_message_item(message, sender, activity_pk, host_role_map))
 
 
 def _parse_message_cursor(cursor: str) -> int:

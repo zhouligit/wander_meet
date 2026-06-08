@@ -545,7 +545,9 @@ async def send_direct_message(
     await _assert_thread_member(thread, current_user.id)
 
     await moderate_send_message_request(current_user, payload)
-    msg_type, text_content, image_url = build_message_row_content(payload, current_user.id)
+    msg_type, text_content, image_url = build_message_row_content(
+        payload, current_user.id, nickname=current_user.nickname
+    )
 
     msg = DirectMessage(
         thread_id=tid,

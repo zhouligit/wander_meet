@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime
 
 from fastapi import HTTPException
 
 from app.services.chat_activity_rec import decode_activity_rec_payload
+from app.services.chat_chain_signup import decode_chain_signup_payload
 from app.schemas.activity import SendMessageRequest
 
 _LOCATION_NAME_MAX = 120
@@ -83,6 +85,45 @@ def build_location_row_content(payload: SendMessageRequest) -> tuple[str, str]:
     return "location", text_content
 
 
+def _parse_chain_entry_created_at(raw: str) -> datetime:
+    s = (raw or "").strip()
+    if not s:
+        return datetime.now(UTC)
+    try:
+        if s.endswith("Z"):
+            s = s[:-1] + "+00:00"
+        return datetime.fromisoformat(s)
+    except ValueError:
+        return datetime.now(UTC)
+
+
+def _chain_signup_fields(text_content: str | None) -> dict:
+    data = decode_chain_signup_payload(text_content)
+    if not data:
+        return {
+            "chainTitle": None,
+            "chainDescription": None,
+            "chainClosed": None,
+            "chainEntries": None,
+        }
+    entries = [
+        {
+            "entryId": e["entryId"],
+            "userId": e["userId"],
+            "nickname": e["nickname"],
+            "note": e.get("note") or "",
+            "createdAt": _parse_chain_entry_created_at(e.get("createdAt") or ""),
+        }
+        for e in data["entries"]
+    ]
+    return {
+        "chainTitle": data["title"],
+        "chainDescription": data.get("description") or None,
+        "chainClosed": data["closed"],
+        "chainEntries": entries,
+    }
+
+
 def message_content_fields(
     msg_type: str, text_content: str | None, image_url: str | None
 ) -> dict[str, str | float | None]:
@@ -149,6 +190,20 @@ def message_content_fields(
             "recActivityId": rec.get("activityId"),
             "recActivityTitle": rec.get("activityTitle"),
         }
+    if msg_type == "chain_signup":
+        chain = _chain_signup_fields(text_content)
+        return {
+            "text": None,
+            "stickerId": None,
+            "imageUrl": None,
+            "locationName": None,
+            "address": None,
+            "lat": None,
+            "lng": None,
+            "recActivityId": None,
+            "recActivityTitle": None,
+            **chain,
+        }
     return {
         "text": text_content,
         "stickerId": None,
@@ -180,4 +235,10 @@ def chat_last_message_preview(msg_type: str, text_content: str | None, image_url
         if rec and rec.get("activityTitle"):
             return f"[活动] {rec['activityTitle'][:24]}"
         return "[活动推荐]"
+    if msg_type == "chain_signup":
+        data = decode_chain_signup_payload(text_content)
+        if data and data.get("title"):
+            count = len(data.get("entries") or [])
+            return f"[接龙] {data['title'][:20]} ({count}人)"
+        return "[接龙]"
     return "[消息]"

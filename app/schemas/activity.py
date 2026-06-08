@@ -149,6 +149,18 @@ class ActivityMembersData(BaseModel):
     list: list[ActivityMemberItem]
 
 
+class ChainSignupEntryItem(BaseModel):
+    entryId: str
+    userId: str
+    nickname: str
+    note: str = ""
+    createdAt: datetime
+
+    @field_serializer("createdAt")
+    def _ser_created_at(self, v: datetime) -> str:
+        return datetime_to_rfc3339_utc_z_shanghai_naive(v) or ""
+
+
 class ChatMessageSender(BaseModel):
     userId: str
     nickname: str
@@ -171,6 +183,10 @@ class ChatMessageItem(BaseModel):
     senderHostRole: str | None = None
     recActivityId: str | None = None
     recActivityTitle: str | None = None
+    chainTitle: str | None = None
+    chainDescription: str | None = None
+    chainClosed: bool | None = None
+    chainEntries: list[ChainSignupEntryItem] | None = None
 
     @field_serializer("createdAt")
     def _ser_created_at(self, v: datetime) -> str:
@@ -191,4 +207,11 @@ class SendMessageRequest(BaseModel):
     address: str | None = None
     lat: float | None = None
     lng: float | None = None
+    chainTitle: str | None = Field(default=None, max_length=80)
+    chainDescription: str | None = Field(default=None, max_length=200)
+    chainNote: str | None = Field(default=None, max_length=60)
+
+
+class ChainSignupEntryRequest(BaseModel):
+    note: str | None = Field(default=None, max_length=60)
 

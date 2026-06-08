@@ -78,3 +78,13 @@ async def moderate_send_message_request(user: User, payload: SendMessageRequest)
         )
     elif msg_type == "image" and payload.imageUrl:
         await assert_image_urls_safe(user, [payload.imageUrl], scene=SCENE_SOCIAL)
+    elif msg_type == "chain_signup":
+        await assert_text_fields_safe(
+            user,
+            {
+                "chainTitle": payload.chainTitle,
+                "chainDescription": payload.chainDescription,
+                "chainNote": payload.chainNote,
+            },
+            scene=SCENE_SOCIAL,
+        )
