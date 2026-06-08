@@ -1,4 +1,4 @@
-"""用户生成内容审核：联系方式过滤 + 微信内容安全 API。"""
+"""用户生成内容审核：本地敏感词 + 联系方式 + 微信内容安全 API。"""
 
 from __future__ import annotations
 
@@ -9,6 +9,7 @@ from fastapi import HTTPException
 from app.models.user import User
 from app.schemas.activity import SendMessageRequest
 from app.services.contact_content_filter import contact_text_blocked_reason
+from app.services.sensitive_content_filter import sensitive_text_blocked_reason
 from app.services.wechat_content_security import (
     CONTENT_VIOLATION_MESSAGE,
     SCENE_SOCIAL,
@@ -26,14 +27,16 @@ async def assert_text_content_safe(
     *,
     scene: int,
     contact_check: bool = True,
+    strict: bool = False,
 ) -> None:
     raw = (text or "").strip()
     if not raw:
         return
-    if contact_check:
+    blocked = sensitive_text_blocked_reason(raw, strict=strict)
+    if not blocked and contact_check:
         blocked = contact_text_blocked_reason(raw)
-        if blocked:
-            raise HTTPException(status_code=400, detail=CONTENT_VIOLATION_MESSAGE)
+    if blocked:
+        raise HTTPException(status_code=400, detail=CONTENT_VIOLATION_MESSAGE)
     try:
         await msg_sec_check_text(content=raw, openid=user.mp_openid, scene=scene)
     except WechatLoginError:
@@ -46,9 +49,16 @@ async def assert_text_fields_safe(
     *,
     scene: int,
     contact_check: bool = True,
+    strict: bool = False,
 ) -> None:
     for value in fields.values():
-        await assert_text_content_safe(user, value, scene=scene, contact_check=contact_check)
+        await assert_text_content_safe(
+            user,
+            value,
+            scene=scene,
+            contact_check=contact_check,
+            strict=strict,
+        )
 
 
 async def assert_image_urls_safe(
@@ -63,10 +73,15 @@ async def assert_image_urls_safe(
             await media_check_async(media_url=u, openid=user.mp_openid, scene=scene)
 
 
-async def moderate_send_message_request(user: User, payload: SendMessageRequest) -> None:
+async def moderate_send_message_request(
+    user: User,
+    payload: SendMessageRequest,
+    *,
+    strict: bool = False,
+) -> None:
     msg_type = payload.msgType
     if msg_type == "text":
-        await assert_text_content_safe(user, payload.text, scene=SCENE_SOCIAL)
+        await assert_text_content_safe(user, payload.text, scene=SCENE_SOCIAL, strict=strict)
     elif msg_type == "location":
         await assert_text_fields_safe(
             user,
@@ -75,6 +90,7 @@ async def moderate_send_message_request(user: User, payload: SendMessageRequest)
                 "address": payload.address,
             },
             scene=SCENE_SOCIAL,
+            strict=strict,
         )
     elif msg_type == "image" and payload.imageUrl:
         await assert_image_urls_safe(user, [payload.imageUrl], scene=SCENE_SOCIAL)
@@ -87,4 +103,5 @@ async def moderate_send_message_request(user: User, payload: SendMessageRequest)
                 "chainNote": payload.chainNote,
             },
             scene=SCENE_SOCIAL,
+            strict=strict,
         )

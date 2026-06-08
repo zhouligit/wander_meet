@@ -9,7 +9,7 @@ from app.services.bos_storage import BosNotConfiguredError, validate_stored_chat
 from app.services.chat_chain_signup import build_create_chain_content
 from app.services.chat_location import build_location_row_content
 from app.services.chat_stickers import validate_sticker_id
-from app.services.contact_content_filter import contact_text_blocked_reason
+from app.services.local_text_content_filter import local_text_blocked_reason
 
 
 def build_message_row_content(
@@ -26,7 +26,7 @@ def build_message_row_content(
     if msg_type == "text":
         if not payload.text:
             raise HTTPException(status_code=400, detail="text is required for text message")
-        blocked = contact_text_blocked_reason(payload.text)
+        blocked = local_text_blocked_reason(payload.text)
         if blocked:
             raise HTTPException(status_code=400, detail=blocked)
         text_content = payload.text

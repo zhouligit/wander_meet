@@ -149,6 +149,13 @@ class ActivityMembersData(BaseModel):
     list: list[ActivityMemberItem]
 
 
+class ChatMentionItem(BaseModel):
+    userId: str
+    nickname: str
+    start: int | None = None
+    end: int | None = None
+
+
 class ChainSignupEntryItem(BaseModel):
     entryId: str
     userId: str
@@ -187,6 +194,7 @@ class ChatMessageItem(BaseModel):
     chainDescription: str | None = None
     chainClosed: bool | None = None
     chainEntries: list[ChainSignupEntryItem] | None = None
+    mentions: list[ChatMentionItem] | None = None
 
     @field_serializer("createdAt")
     def _ser_created_at(self, v: datetime) -> str:
@@ -210,6 +218,7 @@ class SendMessageRequest(BaseModel):
     chainTitle: str | None = Field(default=None, max_length=80)
     chainDescription: str | None = Field(default=None, max_length=200)
     chainNote: str | None = Field(default=None, max_length=60)
+    mentions: list[ChatMentionItem] | None = None
 
 
 class ChainSignupEntryRequest(BaseModel):

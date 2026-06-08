@@ -16,7 +16,7 @@ from app.models.user_block import UserBlock
 from app.services.activity_query import effective_activity_status, to_utc
 from app.services.bos_storage import validate_stored_feed_image_url
 from app.services.city_hall import EVENT_ACTIVITY_KIND, is_city_hall_activity
-from app.services.contact_content_filter import contact_text_blocked_reason
+from app.services.local_text_content_filter import local_text_blocked_reason
 from app.services.content_moderation import assert_image_urls_safe, assert_text_content_safe
 from app.services.wechat_content_security import SCENE_COMMENT, SCENE_SOCIAL
 from app.services.dm_relationship import either_blocked
@@ -197,13 +197,16 @@ async def create_post(
         raise HTTPException(status_code=400, detail="内容不能为空")
     if len(text) > MAX_CONTENT_LEN:
         raise HTTPException(status_code=400, detail="内容过长")
-    blocked = contact_text_blocked_reason(text)
+    strict = post_kind == POST_KIND_CITY
+    blocked = local_text_blocked_reason(text, strict=strict)
     if blocked:
         raise HTTPException(status_code=400, detail=blocked)
 
-    await assert_text_content_safe(user, text, scene=SCENE_SOCIAL)
+    await assert_text_content_safe(user, text, scene=SCENE_SOCIAL, strict=strict)
     if location_name:
-        await assert_text_content_safe(user, location_name, scene=SCENE_SOCIAL, contact_check=False)
+        await assert_text_content_safe(
+            user, location_name, scene=SCENE_SOCIAL, contact_check=False, strict=strict
+        )
 
     loc_name, loc_lat, loc_lng = _normalize_post_location(location_name, lat, lng)
     tags = [t for t in (topic_tags or []) if t in ALLOWED_TOPICS][:3]
@@ -464,14 +467,15 @@ async def add_comment(
         raise HTTPException(status_code=400, detail="评论不能为空")
     if len(text) > MAX_COMMENT_LEN:
         raise HTTPException(status_code=400, detail="评论过长")
-    blocked = contact_text_blocked_reason(text)
-    if blocked:
-        raise HTTPException(status_code=400, detail=blocked)
-    await assert_text_content_safe(user, text, scene=SCENE_COMMENT)
-
     post = await db.scalar(select(Post).where(Post.id == post_id, Post.status == "published"))
     if not post:
         raise HTTPException(status_code=404, detail="动态不存在")
+    strict = post.post_kind == POST_KIND_CITY
+    blocked = local_text_blocked_reason(text, strict=strict)
+    if blocked:
+        raise HTTPException(status_code=400, detail=blocked)
+    await assert_text_content_safe(user, text, scene=SCENE_COMMENT, strict=strict)
+
     author = await db.scalar(select(User).where(User.id == post.user_id))
     if author and await either_blocked(db, user.id, author.id):
         raise HTTPException(status_code=403, detail="blocked")

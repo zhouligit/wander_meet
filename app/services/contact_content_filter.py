@@ -3,24 +3,10 @@
 from __future__ import annotations
 
 import re
-import unicodedata
+
+from app.services.text_scan_utils import normalize_text_for_scan
 
 CONTACT_REJECT_DETAIL = "为保护安全，请勿发送手机号、微信号等联系方式"
-
-_FULLWIDTH_ZERO = ord("\uff10")
-
-
-def _normalize_text_for_scan(s: str) -> str:
-    t = unicodedata.normalize("NFKC", s or "")
-    for z in ("\u200b", "\u200c", "\u200d", "\ufeff", "\u2060"):
-        t = t.replace(z, "")
-    out: list[str] = []
-    for ch in t:
-        if "\uff10" <= ch <= "\uff19":
-            out.append(chr(ord(ch) - _FULLWIDTH_ZERO))
-        else:
-            out.append(ch)
-    return "".join(out)
 
 
 def _contains_mainland_mobile(normalized: str) -> bool:
@@ -71,7 +57,7 @@ def contact_text_blocked_reason(text: str | None) -> str | None:
     raw = text.strip()
     if not raw:
         return None
-    norm = _normalize_text_for_scan(raw)
+    norm = normalize_text_for_scan(raw)
     if _contains_mainland_mobile(norm):
         return CONTACT_REJECT_DETAIL
     for phrase in _SOLICIT_PHRASES:

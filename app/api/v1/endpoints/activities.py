@@ -22,9 +22,9 @@ from app.services.city_hall import EVENT_ACTIVITY_KIND, is_city_hall_activity
 from app.services.city_group_host import (
     build_host_role_map,
     city_code_for_activity,
+    get_active_hosts,
     is_user_muted_in_city,
 )
-from app.services.contact_content_filter import contact_text_blocked_reason
 from app.services.content_moderation import assert_text_fields_safe, moderate_send_message_request
 from app.services.wechat_content_security import SCENE_FORUM, SCENE_SOCIAL
 from app.services.chat_chain_signup import (
@@ -32,6 +32,7 @@ from app.services.chat_chain_signup import (
     close_chain,
     remove_entry,
 )
+from app.services.chat_mentions import build_validated_text_content
 from app.services.chat_message_payload import build_message_row_content
 from app.services.chat_location import message_content_fields
 from app.db.session import get_db_session
@@ -862,6 +863,7 @@ async def activity_members(
     activity_id: str,
     page: int = Query(1, ge=1),
     pageSize: int = Query(20, ge=1, le=100),
+    q: str | None = Query(None, max_length=32),
     db: AsyncSession = Depends(get_db_session),
     current_user: User = Depends(get_current_user),
 ) -> APIResponse[ActivityMembersData]:
@@ -881,6 +883,7 @@ async def activity_members(
         raise HTTPException(status_code=403, detail="Only members can view")
 
     city_hall = is_city_hall_activity(activity)
+    q_norm = (q or "").strip()
     member_stmt = (
         select(ActivityEnrollment, User)
         .join(User, User.id == ActivityEnrollment.user_id)
@@ -892,6 +895,8 @@ async def activity_members(
     )
     if not city_hall:
         member_stmt = member_stmt.where(ActivityEnrollment.user_id != activity.organizer_id)
+    if q_norm:
+        member_stmt = member_stmt.where(User.nickname.ilike(f"%{q_norm}%"))
 
     members_query = await db.execute(
         member_stmt.offset((page - 1) * pageSize).limit(pageSize)
@@ -906,19 +911,44 @@ async def activity_members(
         )
         for en, u in members_query.all()
     ]
-    if not city_hall and page == 1:
+    seen_ids = {m.userId for m in members}
+
+    if city_hall and page == 1:
+        cc = await city_code_for_activity(db, activity)
+        if cc:
+            host_rows = await get_active_hosts(db, cc)
+            host_items: list[ActivityMemberItem] = []
+            for host, user in host_rows:
+                if q_norm and q_norm not in (user.nickname or ""):
+                    continue
+                uid = f"u_{user.id}"
+                if uid in seen_ids:
+                    continue
+                host_items.append(
+                    ActivityMemberItem(
+                        userId=uid,
+                        nickname=user.nickname,
+                        avatarUrl=user.avatar_url,
+                        role=host.role,
+                        joinedAt=host.created_at,
+                    )
+                )
+            members = host_items + members
+    elif not city_hall and page == 1:
         organizer = await db.scalar(select(User).where(User.id == activity.organizer_id))
         if organizer:
-            members.insert(
-                0,
-                ActivityMemberItem(
-                    userId=f"u_{organizer.id}",
-                    nickname=organizer.nickname,
-                    avatarUrl=organizer.avatar_url,
-                    role="organizer",
-                    joinedAt=activity.created_at,
-                ),
-            )
+            uid = f"u_{organizer.id}"
+            if (not q_norm or q_norm in (organizer.nickname or "")) and uid not in seen_ids:
+                members.insert(
+                    0,
+                    ActivityMemberItem(
+                        userId=uid,
+                        nickname=organizer.nickname,
+                        avatarUrl=organizer.avatar_url,
+                        role="organizer",
+                        joinedAt=activity.created_at,
+                    ),
+                )
     return APIResponse(data=ActivityMembersData(list=members))
 
 
@@ -1009,15 +1039,24 @@ async def send_message(
     await _assert_member_or_organizer(activity_pk, current_user.id, db)
 
     activity = await db.scalar(select(Activity).where(Activity.id == activity_pk))
-    if activity and is_city_hall_activity(activity):
+    city_hall_strict = bool(activity and is_city_hall_activity(activity))
+    if activity and city_hall_strict:
         cc = await city_code_for_activity(db, activity)
         if cc and await is_user_muted_in_city(db, cc, current_user.id):
             raise HTTPException(status_code=403, detail="You are muted in this city group")
 
-    await moderate_send_message_request(current_user, payload)
+    await moderate_send_message_request(current_user, payload, strict=city_hall_strict)
     msg_type, text_content, image_url = build_message_row_content(
         payload, current_user.id, nickname=current_user.nickname
     )
+    if msg_type == "text" and payload.mentions:
+        text_content = await build_validated_text_content(
+            db,
+            activity_id=activity_pk,
+            text=payload.text or "",
+            mentions=payload.mentions,
+            strict=city_hall_strict,
+        )
 
     message = ActivityMessage(
         activity_id=activity_pk,
@@ -1107,7 +1146,8 @@ async def chain_signup_join(
     activity_pk = _parse_activity_id(activity_id)
     await _assert_member_or_organizer(activity_pk, current_user.id, db)
     activity = await db.scalar(select(Activity).where(Activity.id == activity_pk))
-    if activity and is_city_hall_activity(activity):
+    city_hall_strict = bool(activity and is_city_hall_activity(activity))
+    if activity and city_hall_strict:
         cc = await city_code_for_activity(db, activity)
         if cc and await is_user_muted_in_city(db, cc, current_user.id):
             raise HTTPException(status_code=403, detail="You are muted in this city group")
@@ -1116,6 +1156,7 @@ async def chain_signup_join(
         current_user,
         {"note": payload.note},
         scene=SCENE_SOCIAL,
+        strict=city_hall_strict,
     )
 
     message = await _chain_message_or_404(db, activity_pk, message_id)

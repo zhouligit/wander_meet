@@ -9,6 +9,7 @@ from fastapi import HTTPException
 
 from app.services.chat_activity_rec import decode_activity_rec_payload
 from app.services.chat_chain_signup import decode_chain_signup_payload
+from app.services.chat_mentions import decode_text_payload
 from app.schemas.activity import SendMessageRequest
 
 _LOCATION_NAME_MAX = 120
@@ -129,8 +130,10 @@ def message_content_fields(
 ) -> dict[str, str | float | None]:
     """序列化为 API 响应字段（text / sticker / image / location）。"""
     if msg_type == "text":
+        text, mentions = decode_text_payload(text_content)
+        mention_items = mentions or None
         return {
-            "text": text_content,
+            "text": text,
             "stickerId": None,
             "imageUrl": None,
             "locationName": None,
@@ -139,6 +142,7 @@ def message_content_fields(
             "lng": None,
             "recActivityId": None,
             "recActivityTitle": None,
+            "mentions": mention_items,
         }
     if msg_type == "sticker":
         return {

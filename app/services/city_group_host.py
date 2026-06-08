@@ -381,7 +381,7 @@ async def patch_host_profile(
     if welcome_text is not None:
         text = welcome_text.strip()
         if text:
-            await assert_text_content_safe(user, text, scene=SCENE_SOCIAL)
+            await assert_text_content_safe(user, text, scene=SCENE_SOCIAL, strict=True)
         owner.welcome_text = text or None
     elif clear_welcome:
         owner.welcome_text = None
@@ -389,7 +389,7 @@ async def patch_host_profile(
     if announcement is not None:
         text = announcement.strip()
         if text:
-            await assert_text_content_safe(user, text, scene=SCENE_SOCIAL)
+            await assert_text_content_safe(user, text, scene=SCENE_SOCIAL, strict=True)
             recent = await _count_recent_actions(db, host.id, "announcement_update")
             if recent >= ANNOUNCEMENT_WEEKLY_LIMIT:
                 raise HTTPException(status_code=429, detail="Announcement update limit reached")
@@ -644,7 +644,7 @@ async def submit_owner_application(
 
     intro = (intro_text or "").strip()
     if intro:
-        await assert_text_content_safe(user, intro, scene=SCENE_SOCIAL)
+        await assert_text_content_safe(user, intro, scene=SCENE_SOCIAL, strict=True)
 
     app = CityGroupHostApplication(
         city_code=normalize_city_code(city_code),
