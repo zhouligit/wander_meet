@@ -21,6 +21,7 @@ from app.db.session import get_db_session, redis_client
 from app.services.auth_blacklist import blacklist_access_jti
 from app.services.auth_refresh import issue_refresh_token, rotate_refresh_token, revoke_all_refresh_for_user
 from app.services.acquisition_source import resolve_new_user_acquisition_source
+from app.services.aliyun_sms import AliyunSmsError, send_sms_aliyun_sync
 from app.services.ihuyi_sms import IhuiSmsError, send_sms_submit_sync
 from app.services.ip_rate_limit import enforce_auth_ip_rate_limit
 from app.services.phone_validation import parse_cn_mobile
