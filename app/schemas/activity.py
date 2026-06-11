@@ -24,6 +24,8 @@ class ActivityCard(BaseModel):
     categoryDisplay: str = ""
     activityStatus: str
     enrollmentStatus: str | None = None
+    messageCount: int = 0
+    unreadCount: int | None = None
 
     @field_serializer("startAt")
     def _ser_start_at(self, v: datetime) -> str:

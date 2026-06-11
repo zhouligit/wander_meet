@@ -40,7 +40,7 @@ from app.services.chat_message_payload import build_message_row_content
 from app.services.chat_location import message_content_fields
 from app.db.session import get_db_session
 from app.services.activity_lifecycle import mark_activity_ended
-from app.services.chat_unread import increment_chat_unread_for_message
+from app.services.chat_unread import enrich_activity_cards_chat_stats, increment_chat_unread_for_message
 from app.services.user_cache import invalidate_me_stats
 from app.services.response_cache import (
     activity_list_cache_key,
@@ -171,6 +171,8 @@ async def list_activities(
                 )
                 for c in cards
             ]
+        uid = optional_user.id if optional_user else None
+        cards = await enrich_activity_cards_chat_stats(db, uid, cards)
         return APIResponse(
             data=ActivityListData(
                 list=cards,
@@ -239,6 +241,9 @@ async def list_activities(
         )
         for a in rows
     ]
+
+    uid = optional_user.id if optional_user else None
+    cards = await enrich_activity_cards_chat_stats(db, uid, cards)
 
     list_data = ActivityListData(list=cards, total=total, page=page, pageSize=pageSize)
     await set_cached_activity_list(
@@ -336,6 +341,8 @@ async def list_nearby_activities(
                 )
                 for c in cards
             ]
+        uid = optional_user.id if optional_user else None
+        cards = await enrich_activity_cards_chat_stats(db, uid, cards)
         return APIResponse(
             data=NearbyActivityListData(
                 list=cards,
@@ -423,6 +430,8 @@ async def list_nearby_activities(
         )
         for a in activities
     ]
+    uid = optional_user.id if optional_user else None
+    cards = await enrich_activity_cards_chat_stats(db, uid, cards)
     logger.info(
         "nearby_activities user_id=%s request_id=%s city=%s radius_km=%.2f page=%s page_size=%s total=%s returned=%s",
         getattr(request.state, "user_id", None),

@@ -83,6 +83,7 @@ from app.services.city_hall import (
     is_city_hall_activity,
     normalize_city_code,
 )
+from app.services.chat_unread import get_chat_stats_for_activity
 from app.services.city_hall_region_catalog import load_static_prefecture_blocks
 
 router = APIRouter(prefix="/city-groups", tags=["city-groups"])
@@ -285,6 +286,8 @@ async def lookup_city_hall(
                 cityCode=cc,
                 displayName="",
                 memberCount=0,
+                messageCount=0,
+                unreadCount=None,
                 joined=False if optional_user else None,
                 activityId=None,
                 activityKind="event",
@@ -304,6 +307,14 @@ async def lookup_city_hall(
         )
         joined = en is not None
 
+    message_count, unread_count = await get_chat_stats_for_activity(
+        db,
+        row,
+        user_id=uid,
+        joined=bool(joined),
+        use_capped_total=True,
+    )
+
     host_fields = await _lookup_host_fields(db, cc, uid, member_count=cnt)
     return APIResponse(
         data=CityHallLookupData(
@@ -311,6 +322,8 @@ async def lookup_city_hall(
             cityCode=cc,
             displayName=row.title,
             memberCount=cnt,
+            messageCount=message_count,
+            unreadCount=unread_count,
             joined=joined,
             activityId=f"act_{row.id}",
             activityKind="city_hall",

@@ -20,6 +20,8 @@ class CityHallLookupData(BaseModel):
     cityCode: str
     displayName: str = ""
     memberCount: int = 0
+    messageCount: int = 0
+    unreadCount: int | None = None
     joined: bool | None = None
     activityId: str | None = None
     activityKind: str = "event"
