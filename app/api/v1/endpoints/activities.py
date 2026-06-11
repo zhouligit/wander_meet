@@ -954,7 +954,7 @@ async def activity_members(
                         nickname=user.nickname,
                         avatarUrl=user.avatar_url,
                         role=host.role,
-                        joinedAt=host.created_at,
+                        joinedAt=host.appointed_at,
                     )
                 )
             members = host_items + members
