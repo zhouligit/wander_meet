@@ -794,7 +794,9 @@ async def update_activity(
         new_cid = updates.get("categoryId", activity.category_id)
         new_sub = updates.get("subCategoryId", activity.sub_category_id)
         new_label = updates.get("categoryLabel", activity.category_label)
-        cat_id, sub_id, cat_label = normalize_activity_category(new_cid, new_sub, new_label)
+        cat_id, sub_id, cat_label = normalize_activity_category(
+            new_cid, new_sub, new_label, allow_retired=True
+        )
         activity.category_id = cat_id
         activity.sub_category_id = sub_id
         activity.category_label = cat_label
