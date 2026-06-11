@@ -569,7 +569,7 @@ async def create_activity(
     if start_at_utc > latest:
         raise HTTPException(
             status_code=400,
-            detail=f"startAt must be within {HOME_ACTIVITY_WINDOW_DAYS} days",
+            detail="开始时间需在7天内：首页只展示近7天可参加的活动，方便大家近期组局见面",
         )
 
     cat_id, sub_id, cat_label = normalize_activity_category(
