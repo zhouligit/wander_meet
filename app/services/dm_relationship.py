@@ -48,3 +48,18 @@ async def get_thread_by_users(db: AsyncSession, u1: int, u2: int) -> DmThread | 
     return await db.scalar(
         select(DmThread).where(DmThread.user_low_id == low, DmThread.user_high_id == high)
     )
+
+
+async def list_dm_peer_user_ids(db: AsyncSession, user_id: int) -> list[int]:
+    """私信会话对端 user id（与「好友列表」一致：已建立 dm thread）。"""
+    rows = (
+        await db.execute(
+            select(DmThread.user_low_id, DmThread.user_high_id).where(
+                or_(DmThread.user_low_id == user_id, DmThread.user_high_id == user_id)
+            )
+        )
+    ).all()
+    peer_ids: set[int] = set()
+    for low, high in rows:
+        peer_ids.add(int(high if int(low) == user_id else low))
+    return sorted(peer_ids)

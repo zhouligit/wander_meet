@@ -19,7 +19,7 @@ from app.services.city_hall import EVENT_ACTIVITY_KIND, is_city_hall_activity
 from app.services.local_text_content_filter import local_text_blocked_reason
 from app.services.content_moderation import assert_image_urls_safe, assert_text_content_safe
 from app.services.wechat_content_security import SCENE_COMMENT, SCENE_SOCIAL
-from app.services.dm_relationship import either_blocked
+from app.services.dm_relationship import either_blocked, list_dm_peer_user_ids
 from app.services.growth_trust import build_public_trust_fields
 from app.services.user_profile_fields import bio_from_user
 
@@ -357,6 +357,13 @@ async def list_feed(
         if not followees:
             return [], 0
         filters.append(Post.user_id.in_(list(followees)))
+    elif scope == "friends":
+        if not viewer_id:
+            raise HTTPException(status_code=401, detail="需要登录")
+        friend_ids = await list_dm_peer_user_ids(db, viewer_id)
+        if not friend_ids:
+            return [], 0
+        filters.append(Post.user_id.in_(friend_ids))
     else:
         if not city_code:
             raise HTTPException(status_code=400, detail="cityCode required")

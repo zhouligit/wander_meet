@@ -53,7 +53,7 @@ async def feed_topics_meta() -> APIResponse[FeedTopicsMetaData]:
 @router.get("/feed")
 async def get_city_feed(
     cityCode: str | None = Query(None),
-    scope: str = Query("city", description="city | following"),
+    scope: str = Query("city", description="city | following | friends"),
     topic: str | None = Query(None),
     page: int = Query(1, ge=1),
     pageSize: int = Query(20, ge=1, le=50),
@@ -68,6 +68,8 @@ async def get_city_feed(
             raise HTTPException(status_code=400, detail="invalid cityCode") from exc
     if topic and topic not in ALLOWED_TOPICS:
         raise HTTPException(status_code=400, detail="invalid topic")
+    if scope not in {"city", "following", "friends"}:
+        raise HTTPException(status_code=400, detail="invalid scope")
     items, total = await list_feed(
         db, viewer, city_code=cc, scope=scope, topic=topic, page=page, page_size=pageSize
     )
