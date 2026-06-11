@@ -31,11 +31,11 @@ ACTIVITY_CATEGORIES: list[CategoryItem] = [
             SubCategoryItem(subCategoryId="movie", name="看电影"),
             SubCategoryItem(subCategoryId="escape_room", name="密室"),
             SubCategoryItem(subCategoryId="script_murder", name="剧本杀"),
+            SubCategoryItem(subCategoryId="cat_mouse", name="猫鼠游戏"),
             SubCategoryItem(subCategoryId="billiards", name="台球"),
             SubCategoryItem(subCategoryId="mahjong", name="棋牌"),
             SubCategoryItem(subCategoryId="arcade", name="电玩"),
             SubCategoryItem(subCategoryId="diy", name="拼豆/DIY"),
-            SubCategoryItem(subCategoryId="cat_mouse", name="猫鼠游戏"),
         ],
     ),
     CategoryItem(
