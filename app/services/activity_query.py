@@ -3,7 +3,7 @@
 from datetime import UTC, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import and_, case, false, func, or_
+from sqlalchemy import and_, case, false, func, or_, select
 from sqlalchemy.sql import ColumnElement
 
 from app.models.activity import Activity
