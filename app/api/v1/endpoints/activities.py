@@ -9,9 +9,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_current_user, get_optional_user
 from app.services.user_profile_fields import bio_from_user, tags_from_user
 from app.services.activity_query import (
+    HOME_ACTIVITY_WINDOW_DAYS,
     activity_city_code_matches,
     date_range_start_filters,
     effective_activity_status,
+    enrollment_count_subquery,
     not_ended_condition,
     to_utc,
     to_utc_optional,
@@ -119,11 +121,14 @@ async def list_activities(
     dateRange: str = Query("all"),
     categoryId: str | None = Query(None),
     subCategoryId: str | None = Query(None),
+    sortBy: str = Query("startAt"),
     page: int = Query(1, ge=1),
     pageSize: int = Query(20, ge=1, le=50),
     db: AsyncSession = Depends(get_db_session),
     optional_user: User | None = Depends(get_optional_user),
 ) -> APIResponse[ActivityListData]:
+    if sortBy not in {"startAt", "popularity"}:
+        raise HTTPException(status_code=400, detail="sortBy must be startAt or popularity")
     if optional_user:
         request.state.user_id = optional_user.id
 
@@ -137,13 +142,13 @@ async def list_activities(
         Activity.activity_status == "published",
         not_ended_condition(now_utc),
     ]
-    filters.extend(date_range_start_filters(dateRange))
+    filters.extend(date_range_start_filters(dateRange, now_utc=now_utc))
     if categoryId:
         filters.append(Activity.category_id == categoryId)
     if subCategoryId:
         filters.append(Activity.sub_category_id == subCategoryId)
 
-    cache_key = activity_list_cache_key(cc, dateRange, categoryId, page, pageSize)
+    cache_key = activity_list_cache_key(cc, dateRange, categoryId, page, pageSize, sortBy)
     cached_list = await get_cached_activity_list(cache_key)
     if cached_list is not None:
         cards = list(cached_list.list)
@@ -177,7 +182,12 @@ async def list_activities(
     total_stmt = select(func.count(Activity.id)).where(*filters)
     total = (await db.execute(total_stmt)).scalar_one()
 
-    base_stmt = select(Activity).where(*filters).order_by(Activity.start_at.asc())
+    base_stmt = select(Activity).where(*filters)
+    if sortBy == "popularity":
+        enroll_cnt = enrollment_count_subquery()
+        base_stmt = base_stmt.order_by(enroll_cnt.desc(), Activity.start_at.asc())
+    else:
+        base_stmt = base_stmt.order_by(Activity.start_at.asc())
     rows = (
         (
             await db.execute(
@@ -258,8 +268,8 @@ async def list_nearby_activities(
     db: AsyncSession = Depends(get_db_session),
     optional_user: User | None = Depends(get_optional_user),
 ) -> APIResponse[NearbyActivityListData]:
-    if sortBy not in {"distance", "startAt"}:
-        raise HTTPException(status_code=400, detail="sortBy must be distance or startAt")
+    if sortBy not in {"distance", "startAt", "popularity"}:
+        raise HTTPException(status_code=400, detail="sortBy must be distance, startAt, or popularity")
     if optional_user:
         request.state.user_id = optional_user.id
 
@@ -283,7 +293,7 @@ async def list_nearby_activities(
         Activity.lng >= min_lng,
         Activity.lng <= max_lng,
     ]
-    base_filters.extend(date_range_start_filters(dateRange))
+    base_filters.extend(date_range_start_filters(dateRange, now_utc=now_utc))
     if cityCode:
         base_filters.append(activity_city_code_matches(Activity.city_code, cityCode))
     if categoryId:
@@ -361,6 +371,9 @@ async def list_nearby_activities(
     )
     if sortBy == "startAt":
         stmt = stmt.order_by(Activity.start_at.asc(), nearby_subq.c.distance_meters.asc())
+    elif sortBy == "popularity":
+        enroll_cnt = enrollment_count_subquery()
+        stmt = stmt.order_by(enroll_cnt.desc(), nearby_subq.c.distance_meters.asc(), Activity.start_at.asc())
     else:
         stmt = stmt.order_by(nearby_subq.c.distance_meters.asc(), Activity.start_at.asc())
 
@@ -551,6 +564,12 @@ async def create_activity(
         raise HTTPException(
             status_code=400,
             detail="startAt must not be before now (5 minute tolerance)",
+        )
+    latest = datetime.now(UTC) + timedelta(days=HOME_ACTIVITY_WINDOW_DAYS)
+    if start_at_utc > latest:
+        raise HTTPException(
+            status_code=400,
+            detail=f"startAt must be within {HOME_ACTIVITY_WINDOW_DAYS} days",
         )
 
     cat_id, sub_id, cat_label = normalize_activity_category(

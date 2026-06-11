@@ -21,9 +21,11 @@ def activity_list_cache_key(
     category_id: str | None,
     page: int,
     page_size: int,
+    sort_by: str = "startAt",
 ) -> str:
     cat = (category_id or "").strip() or "_"
-    return f"{ACTIVITY_LIST_PREFIX}{city_code}:{date_range}:{cat}:{page}:{page_size}"
+    sb = (sort_by or "startAt").strip() or "startAt"
+    return f"{ACTIVITY_LIST_PREFIX}{city_code}:{date_range}:{cat}:{sb}:{page}:{page_size}"
 
 
 def activity_nearby_cache_key(

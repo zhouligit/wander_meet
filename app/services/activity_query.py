@@ -7,6 +7,9 @@ from sqlalchemy import and_, case, false, func, or_
 from sqlalchemy.sql import ColumnElement
 
 from app.models.activity import Activity
+from app.models.activity_enrollment import ActivityEnrollment
+
+HOME_ACTIVITY_WINDOW_DAYS = 7
 
 TZ_BJ = ZoneInfo("Asia/Shanghai")
 
@@ -95,11 +98,31 @@ def beijing_day_range_utc(which: str) -> tuple[datetime, datetime]:
     )
 
 
-def date_range_start_filters(date_range: str) -> list[ColumnElement[bool]]:
-    if date_range not in {"today", "tomorrow"}:
-        return []
-    start_utc, end_utc = beijing_day_range_utc(date_range)
-    return [Activity.start_at >= start_utc, Activity.start_at < end_utc]
+def date_range_start_filters(
+    date_range: str, *, now_utc: datetime | None = None
+) -> list[ColumnElement[bool]]:
+    if date_range in {"today", "tomorrow"}:
+        start_utc, end_utc = beijing_day_range_utc(date_range)
+        return [Activity.start_at >= start_utc, Activity.start_at < end_utc]
+    if date_range == "next7d":
+        now = now_utc or datetime.now(UTC)
+        earliest = now - timedelta(minutes=5)
+        latest = now + timedelta(days=HOME_ACTIVITY_WINDOW_DAYS)
+        return [Activity.start_at >= earliest, Activity.start_at <= latest]
+    return []
+
+
+def enrollment_count_subquery():
+    """已报名人数（joined），用于人气排序。"""
+    return (
+        select(func.count(ActivityEnrollment.id))
+        .where(
+            ActivityEnrollment.activity_id == Activity.id,
+            ActivityEnrollment.status == "joined",
+        )
+        .correlate(Activity)
+        .scalar_subquery()
+    )
 
 
 # 直辖市国标前两位：若用户选的是区县（如 110101），不应再并入 xx0000，否则 IN 到 110000 会扫进「整市」活动。
