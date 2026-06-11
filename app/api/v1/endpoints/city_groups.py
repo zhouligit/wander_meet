@@ -51,6 +51,7 @@ from app.schemas.datetime_iso import datetime_to_rfc3339_utc_z
 from app.schemas.activity import ChatMessageItem, ChatMessageSender
 from app.services.chat_location import message_content_fields
 from app.services.activity_enroll import enroll_user_in_activity
+from app.services.user_phone_bind import assert_user_phone_bound
 from app.services.china_province_meta import province_display_name
 from app.services.city_group_host import (
     HOST_ROLE_OWNER,
@@ -581,6 +582,7 @@ async def join_city_hall(
     """若无该城大群则 **系统账号创建** 后再报名；管理员为系统内置账号。"""
     if current_user.status != "active":
         raise HTTPException(status_code=403, detail="User is restricted")
+    assert_user_phone_bound(current_user)
     try:
         cc = normalize_city_code(payload.cityCode)
     except ValueError as exc:

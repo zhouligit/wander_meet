@@ -17,10 +17,18 @@ from app.services.user_cache import invalidate_user_cache, load_user_for_update
 
 logger = logging.getLogger(__name__)
 
+PHONE_BINDING_REQUIRED_DETAIL = "请先绑定手机号"
+
 
 def user_has_phone(user: User) -> bool:
     p = (user.phone or "").strip()
     return bool(p and len(p) >= 11)
+
+
+def assert_user_phone_bound(user: User) -> None:
+    """进群聊、报名、发活动等需可追溯手机号的操作前调用。"""
+    if not user_has_phone(user):
+        raise HTTPException(status_code=403, detail=PHONE_BINDING_REQUIRED_DETAIL)
 
 
 def mask_user_phone(user: User) -> str:

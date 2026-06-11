@@ -144,21 +144,42 @@ async def invalidate_activity_detail(activity_id: int) -> None:
     await redis_client.delete(activity_detail_cache_key(activity_id))
 
 
-async def invalidate_activity_list_for_city(city_code: str) -> None:
-    """发布/变更等活动写操作后，清除该城市下的同城列表缓存。"""
+_MUNICIPALITY_PROVINCE_PREFIXES = frozenset({"11", "12", "31", "50"})
+
+
+def _list_cache_city_variants(city_code: str) -> list[str]:
+    """写操作后需失效的列表缓存 city 前缀（含直辖市整市码）。"""
     cc = (city_code or "").strip()
     if not cc:
-        return
-    deleted = await _scan_delete(f"{ACTIVITY_LIST_PREFIX}{cc}:*")
+        return []
+    variants = {cc}
+    if len(cc) == 6 and cc.isdigit():
+        p2 = cc[:2]
+        if p2 in _MUNICIPALITY_PROVINCE_PREFIXES:
+            variants.add(f"{p2}0000")
+        elif cc.endswith("00"):
+            variants.add(f"{cc[:4]}00")
+    return list(variants)
+
+
+async def invalidate_activity_list_for_city(city_code: str) -> None:
+    """发布/变更等活动写操作后，清除该城市下的同城列表缓存。"""
+    deleted = 0
+    for cc in _list_cache_city_variants(city_code):
+        deleted += await _scan_delete(f"{ACTIVITY_LIST_PREFIX}{cc}:*")
     if deleted:
-        logger.debug("activity_list_cache_invalidated city=%s keys=%s", cc, deleted)
+        logger.debug("activity_list_cache_invalidated city=%s keys=%s", city_code, deleted)
 
 
 async def invalidate_activity_nearby_for_city(city_code: str | None) -> None:
-    cc = (city_code or "").strip() or "_"
-    deleted = await _scan_delete(f"{ACTIVITY_NEARBY_PREFIX}{cc}:*")
+    deleted = 0
+    if city_code:
+        for cc in _list_cache_city_variants(city_code):
+            deleted += await _scan_delete(f"{ACTIVITY_NEARBY_PREFIX}{cc}:*")
+    else:
+        deleted += await _scan_delete(f"{ACTIVITY_NEARBY_PREFIX}_:*")
     if deleted:
-        logger.debug("activity_nearby_cache_invalidated city=%s keys=%s", cc, deleted)
+        logger.debug("activity_nearby_cache_invalidated city=%s keys=%s", city_code, deleted)
 
 
 async def invalidate_activity_read_caches(

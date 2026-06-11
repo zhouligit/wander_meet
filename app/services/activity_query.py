@@ -81,9 +81,14 @@ def upcoming_activity_condition(now_utc: datetime) -> ColumnElement[bool]:
     )
 
 
-def beijing_day_range_utc(which: str) -> tuple[datetime, datetime]:
+def beijing_day_range_utc(
+    which: str, *, ref_utc: datetime | None = None
+) -> tuple[datetime, datetime]:
     """Return [start, end) in UTC for calendar day in Asia/Shanghai."""
-    local_today = datetime.now(TZ_BJ).date()
+    ref = ref_utc or datetime.now(UTC)
+    if ref.tzinfo is None:
+        ref = ref.replace(tzinfo=UTC)
+    local_today = ref.astimezone(TZ_BJ).date()
     if which == "tomorrow":
         d = local_today + timedelta(days=1)
     elif which == "today":
@@ -104,7 +109,7 @@ def next7d_window_bounds(now_utc: datetime | None = None) -> tuple[datetime, dat
     含今天已开始、尚未结束的活动（外层 ``not_ended_condition`` 负责未结束）。
     """
     now = now_utc or datetime.now(UTC)
-    earliest, _ = beijing_day_range_utc("today")
+    earliest, _ = beijing_day_range_utc("today", ref_utc=now)
     latest = now + timedelta(days=HOME_ACTIVITY_WINDOW_DAYS)
     return earliest, latest
 
@@ -113,10 +118,12 @@ def date_range_start_filters(
     date_range: str, *, now_utc: datetime | None = None
 ) -> list[ColumnElement[bool]]:
     if date_range in {"today", "tomorrow"}:
-        start_utc, end_utc = beijing_day_range_utc(date_range)
+        start_utc, end_utc = beijing_day_range_utc(date_range, ref_utc=now_utc)
         return [Activity.start_at >= start_utc, Activity.start_at < end_utc]
     if date_range == "next7d":
-        earliest, latest = next7d_window_bounds(now_utc)
+        now = now_utc or datetime.now(UTC)
+        earliest, _ = beijing_day_range_utc("today", ref_utc=now)
+        latest = now + timedelta(days=HOME_ACTIVITY_WINDOW_DAYS)
         return [Activity.start_at >= earliest, Activity.start_at <= latest]
     return []
 
