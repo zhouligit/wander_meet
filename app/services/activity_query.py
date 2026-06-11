@@ -98,6 +98,17 @@ def beijing_day_range_utc(which: str) -> tuple[datetime, datetime]:
     )
 
 
+def next7d_window_bounds(now_utc: datetime | None = None) -> tuple[datetime, datetime]:
+    """
+    首页「近 7 天」：开始时间不早于北京时间今天 0 点，不晚于从现在起 7 天内。
+    含今天已开始、尚未结束的活动（外层 ``not_ended_condition`` 负责未结束）。
+    """
+    now = now_utc or datetime.now(UTC)
+    earliest, _ = beijing_day_range_utc("today")
+    latest = now + timedelta(days=HOME_ACTIVITY_WINDOW_DAYS)
+    return earliest, latest
+
+
 def date_range_start_filters(
     date_range: str, *, now_utc: datetime | None = None
 ) -> list[ColumnElement[bool]]:
@@ -105,9 +116,7 @@ def date_range_start_filters(
         start_utc, end_utc = beijing_day_range_utc(date_range)
         return [Activity.start_at >= start_utc, Activity.start_at < end_utc]
     if date_range == "next7d":
-        now = now_utc or datetime.now(UTC)
-        earliest = now - timedelta(minutes=5)
-        latest = now + timedelta(days=HOME_ACTIVITY_WINDOW_DAYS)
+        earliest, latest = next7d_window_bounds(now_utc)
         return [Activity.start_at >= earliest, Activity.start_at <= latest]
     return []
 
