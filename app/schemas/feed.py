@@ -104,5 +104,12 @@ class UserFollowData(BaseModel):
     following: bool
 
 
+class FeedTopicItem(BaseModel):
+    id: str
+    label: str
+    group: str
+    sort: int = 0
+
+
 class FeedTopicsMetaData(BaseModel):
-    topics: list[dict[str, str]]
+    topics: list[FeedTopicItem]
