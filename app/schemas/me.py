@@ -153,3 +153,8 @@ class MyChatsData(BaseModel):
 class MyStatsData(BaseModel):
     joinedCount: int
     organizedCount: int
+
+
+class MessageUnreadSummaryData(BaseModel):
+    chatUnread: int = 0
+    notifUnread: int = 0

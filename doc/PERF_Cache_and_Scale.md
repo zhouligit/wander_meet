@@ -13,6 +13,7 @@
 | **活动附近短缓存** | `GET /activities/nearby`，坐标四舍五入到 3 位小数；同城写操作失效 | 同上 `response_cache.py` |
 | **活动详情短缓存** | `GET /activities/{id}`，不含 `myEnrollment`；命中后仅补查报名状态 | 同上 |
 | **群聊未读优化** | 普通活动：发消息 Redis `INCR`、已读 `SET 0`；城群：bounded COUNT（最多扫 100 行，展示 cap 99） | `app/services/chat_unread.py` |
+| **Tab 未读汇总** | `GET /me/messages/unread-summary`：活动群 + 私聊 + 系统通知分字段返回 | `app/services/message_unread_summary.py` |
 | **元数据进程内缓存** | `GET /meta/activity-categories`、`/meta/onboarding`、`/meta/city-groups` | `@lru_cache`，`app/services/meta_cache.py` |
 | **元数据 HTTP 缓存** | 上述静态 meta 响应头 `Cache-Control: public, max-age=…` | `META_HTTP_CACHE_MAX_AGE_SECONDS` |
 | **鉴权用户行缓存** | `get_current_user` / `get_optional_user` 优先 Redis 用户快照 | `CACHE_USER_AUTH_*`，`app/services/user_cache.py` |

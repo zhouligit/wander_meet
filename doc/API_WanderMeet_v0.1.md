@@ -1577,6 +1577,40 @@ curl "http://127.0.0.1:8001/api/v1/wm/me/chats?page=1&pageSize=20" \
 
 ---
 
+## 29.1.1 消息未读汇总（Tab 角标）
+
+### `GET /api/v1/wm/me/messages/unread-summary`
+
+需登录。供底部 Tab「消息」角标使用；不做轮询，由客户端在 Tab `onShow`、App 回前台、已读操作后拉取。
+
+### 响应 `data`
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| chatUnread | number | 活动群聊 + 私聊未读条数之和 |
+| notifUnread | number | 未读系统通知条数 |
+
+### 展示约定（前端）
+
+- `chatUnread > 0`：Tab 显示数字角标，`≥100` 展示 `99+`。
+- `chatUnread === 0` 且 `notifUnread > 0`：Tab 仅显示小红点。
+- 二者均为 0：不显示角标。
+
+### 响应示例
+
+```json
+{
+  "code": 0,
+  "message": "ok",
+  "data": {
+    "chatUnread": 8,
+    "notifUnread": 2
+  }
+}
+```
+
+---
+
 ## 29.2 标记群聊已读
 
 ### `PATCH /api/v1/wm/me/chats/:activityId/read`

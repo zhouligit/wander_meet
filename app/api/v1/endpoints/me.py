@@ -28,6 +28,7 @@ from app.services.user_cache import (
 )
 from app.services.chat_location import chat_last_message_preview
 from app.services.chat_unread import get_chat_unread_counts, reset_chat_unread
+from app.services.message_unread_summary import build_message_unread_summary
 from app.services.city_hall import (
     CITY_HALL_ACTIVITY_KIND,
     EVENT_ACTIVITY_KIND,
@@ -52,6 +53,7 @@ from app.schemas.me import (
     MyChatsData,
     MyChatItem,
     MyStatsData,
+    MessageUnreadSummaryData,
     PremiumData,
     UpdateMeRequest,
     VerificationSummary,
@@ -635,6 +637,17 @@ async def my_chats(
         )
 
     return APIResponse(data=MyChatsData(list=chat_items, total=total, page=page, pageSize=pageSize))
+
+
+@router.get("/messages/unread-summary")
+async def message_unread_summary(
+    db: AsyncSession = Depends(get_db_session),
+    current_user: User = Depends(get_current_user),
+) -> APIResponse[MessageUnreadSummaryData]:
+    chat_unread, notif_unread = await build_message_unread_summary(db, current_user.id)
+    return APIResponse(
+        data=MessageUnreadSummaryData(chatUnread=chat_unread, notifUnread=notif_unread)
+    )
 
 
 @router.patch("/chats/{activity_id}/read")
