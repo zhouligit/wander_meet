@@ -78,7 +78,7 @@ from app.schemas.activity import (
 )
 from app.schemas.common import APIResponse
 from app.schemas.feed import FeedListData, FeedPostCreateData, FeedPostCreateRequest, FeedPostItem
-from app.services.feed import create_activity_post, list_activity_posts
+from app.services.feed import create_activity_post, list_activity_posts as list_activity_posts_svc
 
 router = APIRouter(prefix="/activities", tags=["activities"])
 logger = logging.getLogger(__name__)
@@ -726,7 +726,7 @@ async def list_activity_posts(
     viewer: User | None = Depends(get_optional_user),
 ) -> APIResponse[FeedListData]:
     activity_pk = _parse_activity_id(activity_id)
-    items, total = await list_activity_posts(
+    items, total = await list_activity_posts_svc(
         db,
         activity_pk,
         viewer.id if viewer else None,
