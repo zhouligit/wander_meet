@@ -40,6 +40,7 @@ from app.services.chat_message_payload import build_message_row_content
 from app.services.chat_location import message_content_fields
 from app.db.session import get_db_session
 from app.services.activity_lifecycle import mark_activity_ended
+from app.services.activity_update import apply_activity_update
 from app.services.chat_unread import enrich_activity_cards_chat_stats, increment_chat_unread_for_message
 from app.services.user_cache import invalidate_me_stats
 from app.services.response_cache import (
@@ -790,50 +791,8 @@ async def update_activity(
         raise HTTPException(status_code=403, detail="Only organizer can update activity")
 
     updates = payload.model_dump(exclude_unset=True)
-    if "endAt" in updates and "startAt" in updates and to_utc(updates["endAt"]) <= to_utc(
-        updates["startAt"]
-    ):
-        raise HTTPException(status_code=400, detail="endAt must be after startAt")
-    if "endAt" in updates and "startAt" not in updates and to_utc(updates["endAt"]) <= to_utc(
-        activity.start_at
-    ):
-        raise HTTPException(status_code=400, detail="endAt must be after startAt")
-
-    if "categoryId" in updates or "categoryLabel" in updates or "subCategoryId" in updates:
-        new_cid = updates.get("categoryId", activity.category_id)
-        new_sub = updates.get("subCategoryId", activity.sub_category_id)
-        new_label = updates.get("categoryLabel", activity.category_label)
-        cat_id, sub_id, cat_label = normalize_activity_category(
-            new_cid, new_sub, new_label, allow_retired=True
-        )
-        activity.category_id = cat_id
-        activity.sub_category_id = sub_id
-        activity.category_label = cat_label
-        updates.pop("categoryId", None)
-        updates.pop("subCategoryId", None)
-        updates.pop("categoryLabel", None)
-
-    field_map = {
-        "title": "title",
-        "description": "description",
-        "startAt": "start_at",
-        "endAt": "end_at",
-        "locationName": "location_name",
-        "addressDetail": "address_detail",
-        "lat": "lat",
-        "lng": "lng",
-        "maxMembers": "max_members",
-        "feeType": "fee_type",
-        "feeAmount": "fee_amount_cents",
-    }
-    for req_key, model_key in field_map.items():
-        if req_key in updates:
-            val = updates[req_key]
-            if req_key == "startAt":
-                val = to_utc(val)
-            elif req_key == "endAt" and val is not None:
-                val = to_utc(val)
-            setattr(activity, model_key, val)
+    now_utc = datetime.now(UTC)
+    await apply_activity_update(db, activity, current_user, updates, now_utc=now_utc)
     await db.commit()
     await db.refresh(activity)
     await invalidate_activity_read_caches(
