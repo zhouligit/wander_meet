@@ -2,7 +2,7 @@ from datetime import UTC, datetime, timedelta
 import math
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request
 from sqlalchemy import Float, cast, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -40,7 +40,7 @@ from app.services.chat_message_payload import build_message_row_content
 from app.services.chat_location import message_content_fields
 from app.db.session import get_db_session
 from app.services.activity_lifecycle import mark_activity_ended
-from app.services.activity_update import apply_activity_update
+from app.services.activity_update import apply_activity_update, post_organizer_chat_notice
 from app.services.chat_unread import enrich_activity_cards_chat_stats, increment_chat_unread_for_message
 from app.services.user_cache import invalidate_me_stats
 from app.services.response_cache import (
@@ -73,6 +73,7 @@ from app.schemas.activity import (
     CreateActivityRequest,
     EnrollmentData,
     MyEnrollment,
+    CancelActivityRequest,
     ChainSignupEntryRequest,
     SendMessageRequest,
     UpdateActivityRequest,
@@ -811,7 +812,7 @@ async def update_activity(
 async def cancel_activity(
     request: Request,
     activity_id: str,
-    reason: str | None = None,
+    payload: CancelActivityRequest = Body(default_factory=CancelActivityRequest),
     db: AsyncSession = Depends(get_db_session),
     current_user: User = Depends(get_current_user),
 ) -> APIResponse[dict[str, str]]:
@@ -826,9 +827,19 @@ async def cancel_activity(
     if activity.activity_status in {"cancelled", "ended"}:
         raise HTTPException(status_code=400, detail="Activity already closed")
 
+    reason = (payload.reason or "").strip() or None
+    if reason:
+        await assert_text_fields_safe(current_user, {"reason": reason}, scene=SCENE_FORUM)
+
     mark_activity_ended(activity, status="cancelled")
     if reason:
         activity.description = f"{activity.description}\n\n[取消原因] {reason}"
+
+    notice = "【活动取消】发起人已取消本次活动"
+    if reason:
+        notice += f"\n原因：{reason}"
+    await post_organizer_chat_notice(db, activity, current_user.id, notice)
+
     await db.commit()
     await invalidate_activity_read_caches(
         city_code=activity.city_code, activity_id=activity.id

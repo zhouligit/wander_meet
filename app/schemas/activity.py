@@ -135,6 +135,10 @@ class UpdateActivityRequest(BaseModel):
     feeAmount: int | None = None
 
 
+class CancelActivityRequest(BaseModel):
+    reason: str | None = Field(default=None, max_length=512)
+
+
 class ActivityMemberItem(BaseModel):
     userId: str
     nickname: str

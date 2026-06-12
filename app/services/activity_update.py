@@ -185,15 +185,28 @@ async def apply_activity_update(
 
     if notice_lines:
         text = "【活动变更】发起人更新了活动信息\n" + "\n".join(notice_lines)
-        db.add(
-            ActivityMessage(
-                activity_id=activity.id,
-                sender_id=organizer.id,
-                msg_type="text",
-                text_content=text,
-            )
-        )
-        await db.flush()
-        await increment_chat_unread_for_message(db, activity, organizer.id)
+        await post_organizer_chat_notice(db, activity, organizer.id, text)
 
     return notice_lines
+
+
+async def post_organizer_chat_notice(
+    db: AsyncSession,
+    activity: Activity,
+    organizer_id: int,
+    text: str,
+) -> None:
+    """向活动群聊发送发起人侧通知（变更/取消等）。"""
+    body = (text or "").strip()
+    if not body:
+        return
+    db.add(
+        ActivityMessage(
+            activity_id=activity.id,
+            sender_id=organizer_id,
+            msg_type="text",
+            text_content=body,
+        )
+    )
+    await db.flush()
+    await increment_chat_unread_for_message(db, activity, organizer_id)
