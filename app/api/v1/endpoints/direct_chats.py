@@ -25,10 +25,16 @@ from app.services.wechat_content_security import SCENE_COMMENT, SCENE_PROFILE, S
 from app.services.chat_message_payload import build_message_row_content
 from app.services.chat_location import chat_last_message_preview, message_content_fields
 from app.services.dm_relationship import (
+    clear_thread_removals,
     either_blocked,
     get_thread_by_users,
     is_activity_participant,
+    is_thread_visible_for_user,
+    peer_user_id,
+    remove_thread_for_user,
     sort_user_pair,
+    user_considers_peer_connected,
+    visible_thread_filter,
 )
 from app.schemas.direct_chat import (
     AcceptDmRequestData,
@@ -89,11 +95,15 @@ async def _assert_thread_member(thread: DmThread, user_id: int) -> None:
 
 
 def _peer_id(thread: DmThread, user_id: int) -> int:
-    if thread.user_low_id == user_id:
-        return thread.user_high_id
-    if thread.user_high_id == user_id:
-        return thread.user_low_id
-    raise HTTPException(status_code=403, detail="Not a participant of this thread")
+    return peer_user_id(thread, user_id)
+
+
+async def _assert_thread_accessible(
+    db: AsyncSession, thread: DmThread, user_id: int
+) -> None:
+    await _assert_thread_member(thread, user_id)
+    if not await is_thread_visible_for_user(db, user_id, thread):
+        raise HTTPException(status_code=403, detail="Friendship removed or blocked")
 
 
 @router.post("/activities/{activity_id}/dm-requests")
@@ -138,7 +148,9 @@ async def create_dm_request(
         )
 
     existing_thread = await get_thread_by_users(db, current_user.id, to_user_id)
-    if existing_thread:
+    if existing_thread and await user_considers_peer_connected(
+        db, current_user.id, to_user_id
+    ):
         return APIResponse(
             code=409,
             message="already connected",
@@ -309,6 +321,8 @@ async def accept_dm_request(
         thread = DmThread(user_low_id=low, user_high_id=high)
         db.add(thread)
         await db.flush()
+    else:
+        await clear_thread_removals(db, thread.id)
 
     now = datetime.now(UTC)
     req.status = "accepted"
@@ -393,17 +407,17 @@ async def my_direct_chats(
     current_user: User = Depends(get_current_user),
 ) -> APIResponse[MyDirectChatsData]:
     uid = current_user.id
-    thread_filter = or_(DmThread.user_low_id == uid, DmThread.user_high_id == uid)
+    vis_filter = visible_thread_filter(uid)
 
     total = (
-        await db.execute(select(func.count(DmThread.id)).where(thread_filter))
+        await db.execute(select(func.count(DmThread.id)).where(vis_filter))
     ).scalar_one()
 
     threads = (
         (
             await db.execute(
                 select(DmThread)
-                .where(thread_filter)
+                .where(vis_filter)
                 .order_by(DmThread.updated_at.desc(), DmThread.id.desc())
                 .offset((page - 1) * pageSize)
                 .limit(pageSize)
@@ -490,6 +504,23 @@ async def my_direct_chats(
     )
 
 
+@router.delete("/me/direct-chats/{thread_id}")
+async def remove_direct_chat_friend(
+    thread_id: str,
+    db: AsyncSession = Depends(get_db_session),
+    current_user: User = Depends(get_current_user),
+) -> APIResponse[dict[str, bool]]:
+    """删除好友：对当前用户隐藏私聊会话，可再次申请私聊恢复。"""
+    tid = _parse_dmthr_id(thread_id)
+    thread = await db.scalar(select(DmThread).where(DmThread.id == tid))
+    if not thread:
+        raise HTTPException(status_code=404, detail="Thread not found")
+    await _assert_thread_member(thread, current_user.id)
+    await remove_thread_for_user(db, current_user.id, thread)
+    await db.commit()
+    return APIResponse(data={"ok": True})
+
+
 @router.get("/direct-chats/{thread_id}/messages")
 async def list_direct_messages(
     thread_id: str,
@@ -502,7 +533,7 @@ async def list_direct_messages(
     thread = await db.scalar(select(DmThread).where(DmThread.id == tid))
     if not thread:
         return APIResponse(code=404, message="thread not found", data=DirectMessagesData(list=[], nextCursor=None))
-    await _assert_thread_member(thread, current_user.id)
+    await _assert_thread_accessible(db, thread, current_user.id)
 
     stmt = (
         select(DirectMessage, User)
@@ -542,7 +573,7 @@ async def send_direct_message(
     thread = await db.scalar(select(DmThread).where(DmThread.id == tid))
     if not thread:
         raise HTTPException(status_code=404, detail="Thread not found")
-    await _assert_thread_member(thread, current_user.id)
+    await _assert_thread_accessible(db, thread, current_user.id)
 
     await moderate_send_message_request(current_user, payload)
     msg_type, text_content, image_url = build_message_row_content(
@@ -583,7 +614,7 @@ async def mark_direct_read(
     thread = await db.scalar(select(DmThread).where(DmThread.id == tid))
     if not thread:
         return APIResponse(code=404, message="thread not found", data={"updatedCount": 0})
-    await _assert_thread_member(thread, current_user.id)
+    await _assert_thread_accessible(db, thread, current_user.id)
 
     last_msg_id = await db.scalar(
         select(func.max(DirectMessage.id)).where(DirectMessage.thread_id == tid)

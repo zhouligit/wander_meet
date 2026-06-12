@@ -12,6 +12,7 @@ from app.models import (  # noqa: F401
     direct_message,
     dm_request,
     dm_thread,
+    dm_thread_removal,
     dm_thread_read,
     notification,
     place_activity_alert,

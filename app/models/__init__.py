@@ -4,6 +4,7 @@ from app.models.activity_message import ActivityMessage
 from app.models.direct_message import DirectMessage
 from app.models.dm_request import DmRequest
 from app.models.dm_thread import DmThread
+from app.models.dm_thread_removal import DmThreadRemoval
 from app.models.dm_thread_read import DmThreadRead
 from app.models.notification import Notification
 from app.models.place_activity_alert import PlaceActivityAlert
@@ -41,6 +42,7 @@ __all__ = [
     "DirectMessage",
     "DmRequest",
     "DmThread",
+    "DmThreadRemoval",
     "DmThreadRead",
     "UserVerification",
     "Report",
