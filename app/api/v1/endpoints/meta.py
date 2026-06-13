@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Query, Response
 
 from app.core.config import get_settings
+from app.schemas.activity import ActivityGuideTemplateData, ActivityGuideTemplateSection
 from app.schemas.city_group import CityGroupsMetaData
 from app.schemas.common import APIResponse
 from app.schemas.meta import CategoryData, OnboardingMetaData, PublishMetaData
@@ -11,6 +12,7 @@ from app.services.meta_cache import (
     get_cached_onboarding_meta,
 )
 from app.services.place_suggestions import search_place_suggestions
+from app.services.activity_guide import guide_template_for_meta
 
 router = APIRouter(prefix="/meta", tags=["meta"])
 
@@ -56,6 +58,18 @@ async def onboarding_meta(response: Response) -> APIResponse[OnboardingMetaData]
     return APIResponse(
         data=base.model_copy(
             update={"fullOnboardingEnabled": settings.onboarding_full_enabled}
+        )
+    )
+
+
+@router.get("/activity-guide")
+async def activity_guide_meta(response: Response) -> APIResponse[ActivityGuideTemplateData]:
+    """活动说明页全站模板章节（无需登录）。"""
+    _apply_meta_http_cache(response)
+    rows = guide_template_for_meta()
+    return APIResponse(
+        data=ActivityGuideTemplateData(
+            sections=[ActivityGuideTemplateSection(**r) for r in rows],
         )
     )
 

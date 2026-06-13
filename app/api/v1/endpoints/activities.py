@@ -45,6 +45,10 @@ from app.services.activity_update import (
     apply_activity_update,
     post_organizer_chat_notice,
 )
+from app.services.activity_guide import (
+    apply_activity_guide_sections,
+    guide_fields_for_api,
+)
 from app.services.activity_images import (
     activity_image_fields_for_api,
     apply_activity_images,
@@ -525,6 +529,7 @@ async def _build_activity_detail_data(
         **activity_image_fields_for_api(
             activity, current_user.id if current_user else None
         ),
+        **guide_fields_for_api(activity, int(enrolled_count or 0)),
     )
 
 
@@ -665,6 +670,8 @@ async def create_activity(
     )
     if payload.images:
         await apply_activity_images(db, activity, current_user, payload.images)
+    if payload.guideSections is not None:
+        await apply_activity_guide_sections(activity, current_user, payload.guideSections)
     await db.commit()
     await db.refresh(activity)
     await invalidate_activity_read_caches(
@@ -829,11 +836,17 @@ async def update_activity(
 
     updates = payload.model_dump(exclude_unset=True)
     images = updates.pop("images", None)
+    guide_sections = updates.pop("guideSections", None)
     now_utc = datetime.now(UTC)
     if images is not None:
         if activity_has_started(activity, now_utc):
             raise HTTPException(status_code=400, detail="活动进行中不可修改图片")
         await apply_activity_images(db, activity, current_user, images)
+    if guide_sections is not None:
+        status = effective_activity_status(activity, now_utc)
+        if status in {"cancelled", "ended"}:
+            raise HTTPException(status_code=400, detail="活动已结束或已取消，无法修改说明")
+        await apply_activity_guide_sections(activity, current_user, guide_sections)
     await apply_activity_update(db, activity, current_user, updates, now_utc=now_utc)
     await db.commit()
     await db.refresh(activity)

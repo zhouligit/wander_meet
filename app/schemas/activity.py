@@ -71,9 +71,37 @@ class CreateActivityRequest(BaseModel):
     feeType: str = "free"
     feeAmount: int | None = None
     images: list[str] | None = Field(default=None, max_length=9)
+    guideSections: dict[str, str] | None = None
 
 
-class ActivityDetailOrganizer(BaseModel):
+class ActivityGuideTemplateSection(BaseModel):
+    key: str
+    label: str
+    ordinal: str
+    placeholder: str = ""
+
+
+class ActivityGuideTemplateData(BaseModel):
+    sections: list[ActivityGuideTemplateSection]
+
+
+class ActivityGuideSyncedOverview(BaseModel):
+    title: str
+    startAt: datetime
+    endAt: datetime | None = None
+    locationName: str
+    addressDetail: str | None = None
+    maxMembers: int
+    enrolledCount: int
+    feeType: str
+    feeAmount: int | None = None
+    feeLabel: str
+
+    @field_serializer("startAt", "endAt")
+    def _ser_guide_times(self, v: datetime | None) -> str | None:
+        return datetime_to_rfc3339_utc_z(v)
+
+
     userId: str
     nickname: str
     avatarUrl: str | None = None
@@ -112,6 +140,9 @@ class ActivityDetailData(BaseModel):
     coverImageUrl: str | None = None
     images: list[str] | None = None
     imagesAuditStatus: str = "none"
+    guideSections: dict[str, str] | None = None
+    guideFilled: bool = False
+    guideOverview: ActivityGuideSyncedOverview | None = None
 
     @field_serializer("startAt", "endAt")
     def _ser_detail_times(self, v: datetime | None) -> str | None:
@@ -139,6 +170,7 @@ class UpdateActivityRequest(BaseModel):
     feeType: str | None = None
     feeAmount: int | None = None
     images: list[str] | None = Field(default=None, max_length=9)
+    guideSections: dict[str, str] | None = None
 
 
 class CancelActivityRequest(BaseModel):
