@@ -847,7 +847,8 @@ async def update_activity(
         if status in {"cancelled", "ended"}:
             raise HTTPException(status_code=400, detail="活动已结束或已取消，无法修改说明")
         await apply_activity_guide_sections(activity, current_user, guide_sections)
-    await apply_activity_update(db, activity, current_user, updates, now_utc=now_utc)
+    if updates:
+        await apply_activity_update(db, activity, current_user, updates, now_utc=now_utc)
     await db.commit()
     await db.refresh(activity)
     await invalidate_activity_read_caches(
