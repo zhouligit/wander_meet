@@ -86,6 +86,7 @@ from app.services.bos_storage import (
     put_avatar_bytes,
     put_chat_image_bytes,
     put_feed_image_bytes,
+    put_activity_image_bytes,
     validate_stored_avatar_url,
 )
 from app.db.session import redis_client
@@ -780,6 +781,29 @@ async def upload_feed_image_file(
     try:
         public_url = await asyncio.to_thread(
             put_feed_image_bytes,
+            user_id=current_user.id,
+            data=body,
+            content_type=file.content_type or "image/jpeg",
+            file_ext=file_ext,
+        )
+    except BosNotConfiguredError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    return APIResponse(data=FeedImageUploadData(imageUrl=public_url))
+
+
+@router.post("/activity/images")
+async def upload_activity_image_file(
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+) -> APIResponse[FeedImageUploadData]:
+    """活动封面/图集：multipart 上传到 BOS，发布时在 images 携带返回值。"""
+    body = await file.read()
+    file_ext = None
+    if file.filename and "." in file.filename:
+        file_ext = file.filename.rsplit(".", 1)[-1]
+    try:
+        public_url = await asyncio.to_thread(
+            put_activity_image_bytes,
             user_id=current_user.id,
             data=body,
             content_type=file.content_type or "image/jpeg",

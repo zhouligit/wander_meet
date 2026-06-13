@@ -40,7 +40,17 @@ from app.services.chat_message_payload import build_message_row_content
 from app.services.chat_location import message_content_fields
 from app.db.session import get_db_session
 from app.services.activity_lifecycle import mark_activity_ended
-from app.services.activity_update import apply_activity_update, post_organizer_chat_notice
+from app.services.activity_update import (
+    activity_has_started,
+    apply_activity_update,
+    post_organizer_chat_notice,
+)
+from app.services.activity_images import (
+    activity_image_fields_for_api,
+    apply_activity_images,
+    maybe_expire_pending_activity_images,
+    public_cover_image_url,
+)
 from app.services.chat_unread import enrich_activity_cards_chat_stats, increment_chat_unread_for_message
 from app.services.user_cache import invalidate_me_stats
 from app.services.response_cache import (
@@ -240,6 +250,7 @@ async def list_activities(
             **_category_fields_for_api(a),
             activityStatus=effective_activity_status(a, now_utc),
             enrollmentStatus="joined" if a.id in joined_ids else None,
+            coverImageUrl=public_cover_image_url(a),
         )
         for a in rows
     ]
@@ -429,6 +440,7 @@ async def list_nearby_activities(
             **_category_fields_for_api(a),
             activityStatus=effective_activity_status(a, now_utc),
             enrollmentStatus="joined" if a.id in joined_ids else None,
+            coverImageUrl=public_cover_image_url(a),
         )
         for a in activities
     ]
@@ -510,6 +522,9 @@ async def _build_activity_detail_data(
         organizer=_organizer_for_detail(organizer),
         enrolledCount=int(enrolled_count or 0),
         myEnrollment=MyEnrollment(status="joined") if my_enrollment_row else None,
+        **activity_image_fields_for_api(
+            activity, current_user.id if current_user else None
+        ),
     )
 
 
@@ -529,6 +544,16 @@ async def get_activity_detail(
 
     cached_detail = await get_cached_activity_detail(activity_pk)
     if cached_detail is not None:
+        activity_row = await db.scalar(select(Activity).where(Activity.id == activity_pk))
+        if activity_row:
+            if await maybe_expire_pending_activity_images(db, activity_row):
+                await db.commit()
+                await db.refresh(activity_row)
+            cached_detail = cached_detail.model_copy(
+                update=activity_image_fields_for_api(
+                    activity_row, optional_user.id if optional_user else None
+                )
+            )
         my_enrollment = None
         if optional_user:
             my_enrollment_row = await db.scalar(
@@ -548,10 +573,19 @@ async def get_activity_detail(
     if not activity:
         raise HTTPException(status_code=404, detail="Activity not found")
 
+    if await maybe_expire_pending_activity_images(db, activity):
+        await db.commit()
+        await db.refresh(activity)
+
     data = await _build_activity_detail_data(db, activity, optional_user, now_utc)
     await set_cached_activity_detail(
         activity_pk,
-        data.model_copy(update={"myEnrollment": None}),
+        data.model_copy(
+            update={
+                "myEnrollment": None,
+                **activity_image_fields_for_api(activity, None),
+            }
+        ),
     )
     return APIResponse(data=data)
 
@@ -629,6 +663,8 @@ async def create_activity(
             status="joined",
         )
     )
+    if payload.images:
+        await apply_activity_images(db, activity, current_user, payload.images)
     await db.commit()
     await db.refresh(activity)
     await invalidate_activity_read_caches(
@@ -792,7 +828,12 @@ async def update_activity(
         raise HTTPException(status_code=403, detail="Only organizer can update activity")
 
     updates = payload.model_dump(exclude_unset=True)
+    images = updates.pop("images", None)
     now_utc = datetime.now(UTC)
+    if images is not None:
+        if activity_has_started(activity, now_utc):
+            raise HTTPException(status_code=400, detail="活动进行中不可修改图片")
+        await apply_activity_images(db, activity, current_user, images)
     await apply_activity_update(db, activity, current_user, updates, now_utc=now_utc)
     await db.commit()
     await db.refresh(activity)

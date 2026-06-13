@@ -95,21 +95,21 @@ async def msg_sec_check_text(*, content: str, openid: str | None, scene: int) ->
     _raise_if_unsafe_msg_sec_response(data)
 
 
-async def media_check_async(*, media_url: str, openid: str | None, scene: int) -> None:
-    """异步图片/音频审核（尽力调用；结果由微信回调，此处不阻塞发布）。"""
+async def media_check_async(*, media_url: str, openid: str | None, scene: int) -> str | None:
+    """异步图片/音频审核；成功时返回 ``trace_id`` 供回调关联。"""
     url = (media_url or "").strip()
     if not url:
-        return
+        return None
 
     settings = get_settings()
     if not settings.wx_content_sec_enabled or settings.wx_mp_use_mock:
-        return
+        return None
     if not (settings.wx_mp_appid or "").strip():
-        return
+        return None
 
     openid_val = (openid or "").strip()
     if not openid_val:
-        return
+        return None
 
     body = {
         "openid": openid_val,
@@ -121,11 +121,15 @@ async def media_check_async(*, media_url: str, openid: str | None, scene: int) -
     try:
         data = await _post_wechat_json(_MEDIA_CHECK_ASYNC_URL, body)
         errcode = int(data.get("errcode") or 0)
+        trace_id = str(data.get("trace_id") or "").strip() or None
         if errcode:
             logger.warning(
                 "media_check_async errcode=%s trace=%s",
                 errcode,
-                data.get("trace_id"),
+                trace_id,
             )
+            return None
+        return trace_id
     except WechatLoginError:
         logger.warning("media_check_async skipped due to token error", exc_info=True)
+        return None

@@ -26,6 +26,7 @@ class ActivityCard(BaseModel):
     enrollmentStatus: str | None = None
     messageCount: int = 0
     unreadCount: int | None = None
+    coverImageUrl: str | None = None
 
     @field_serializer("startAt")
     def _ser_start_at(self, v: datetime) -> str:
@@ -69,6 +70,7 @@ class CreateActivityRequest(BaseModel):
     maxMembers: int = Field(ge=2, le=100)
     feeType: str = "free"
     feeAmount: int | None = None
+    images: list[str] | None = Field(default=None, max_length=9)
 
 
 class ActivityDetailOrganizer(BaseModel):
@@ -107,6 +109,9 @@ class ActivityDetailData(BaseModel):
     organizer: ActivityDetailOrganizer
     enrolledCount: int
     myEnrollment: MyEnrollment | None = None
+    coverImageUrl: str | None = None
+    images: list[str] | None = None
+    imagesAuditStatus: str = "none"
 
     @field_serializer("startAt", "endAt")
     def _ser_detail_times(self, v: datetime | None) -> str | None:
@@ -133,6 +138,7 @@ class UpdateActivityRequest(BaseModel):
     maxMembers: int | None = Field(default=None, ge=2, le=100)
     feeType: str | None = None
     feeAmount: int | None = None
+    images: list[str] | None = Field(default=None, max_length=9)
 
 
 class CancelActivityRequest(BaseModel):

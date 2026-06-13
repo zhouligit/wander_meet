@@ -1,5 +1,6 @@
 from app.models.activity import Activity
 from app.models.activity_enrollment import ActivityEnrollment
+from app.models.activity_media_audit import ActivityMediaAudit
 from app.models.activity_message import ActivityMessage
 from app.models.direct_message import DirectMessage
 from app.models.dm_request import DmRequest
@@ -38,6 +39,7 @@ __all__ = [
     "User",
     "Activity",
     "ActivityEnrollment",
+    "ActivityMediaAudit",
     "ActivityMessage",
     "DirectMessage",
     "DmRequest",

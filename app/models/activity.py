@@ -39,6 +39,13 @@ class Activity(Base):
     fee_type: Mapped[str] = mapped_column(String(16), default="free")
     fee_amount_cents: Mapped[int | None] = mapped_column(Integer(), nullable=True)
     activity_status: Mapped[str] = mapped_column(String(24), default="published", index=True)
+    cover_image_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    images: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    #: none | pending | pass | reject
+    images_audit_status: Mapped[str] = mapped_column(String(16), default="none", index=True)
+    images_audit_updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
