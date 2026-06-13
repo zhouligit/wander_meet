@@ -540,6 +540,11 @@ async def my_premium(
 async def my_chats(
     page: int = Query(1, ge=1),
     pageSize: int = Query(20, ge=1, le=50),
+    activityKind: str | None = Query(
+        None,
+        pattern="^(city_hall|event)$",
+        description="按类型筛选：city_hall 城市大群 / event 普通活动群聊",
+    ),
     db: AsyncSession = Depends(get_db_session),
     current_user: User = Depends(get_current_user),
 ) -> APIResponse[MyChatsData]:
@@ -562,29 +567,44 @@ async def my_chats(
         .subquery()
     )
 
+    joined_conditions = [
+        ActivityEnrollment.user_id == current_user.id,
+        ActivityEnrollment.status == "joined",
+    ]
+    if activityKind == CITY_HALL_ACTIVITY_KIND:
+        joined_conditions.append(Activity.activity_kind == CITY_HALL_ACTIVITY_KIND)
+    elif activityKind == EVENT_ACTIVITY_KIND:
+        joined_conditions.append(Activity.activity_kind == EVENT_ACTIVITY_KIND)
+
     total = (
         await db.execute(
-            select(func.count(Activity.id)).where(
-                Activity.id.in_(select(joined_activity_ids_subq.c.activity_id))
-            )
+            select(func.count(Activity.id))
+            .select_from(Activity)
+            .join(ActivityEnrollment, ActivityEnrollment.activity_id == Activity.id)
+            .where(*joined_conditions)
         )
     ).scalar_one()
+
+    if activityKind in (CITY_HALL_ACTIVITY_KIND, EVENT_ACTIVITY_KIND):
+        order_clauses = [
+            func.coalesce(last_msg_sq.c.last_msg_at, EPOCH_UTC).desc(),
+            Activity.id.desc(),
+        ]
+    else:
+        order_clauses = [
+            case((Activity.activity_kind == "city_hall", 0), else_=1),
+            func.coalesce(last_msg_sq.c.last_msg_at, EPOCH_UTC).desc(),
+            Activity.id.desc(),
+        ]
 
     activities = (
         (
             await db.execute(
                 select(Activity)
                 .join(ActivityEnrollment, ActivityEnrollment.activity_id == Activity.id)
-                .where(
-                    ActivityEnrollment.user_id == current_user.id,
-                    ActivityEnrollment.status == "joined",
-                )
+                .where(*joined_conditions)
                 .outerjoin(last_msg_sq, last_msg_sq.c.aid == Activity.id)
-                .order_by(
-                    case((Activity.activity_kind == "city_hall", 0), else_=1),
-                    func.coalesce(last_msg_sq.c.last_msg_at, EPOCH_UTC).desc(),
-                    Activity.id.desc(),
-                )
+                .order_by(*order_clauses)
                 .offset((page - 1) * pageSize)
                 .limit(pageSize)
             )
