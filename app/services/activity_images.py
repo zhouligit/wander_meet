@@ -13,6 +13,7 @@ from app.core.config import get_settings
 from app.models.activity import Activity
 from app.models.activity_media_audit import ActivityMediaAudit
 from app.models.user import User
+from app.services.activity_query import to_utc_optional
 from app.services.bos_storage import validate_stored_activity_image_url
 from app.services.wechat_content_security import SCENE_FORUM, media_check_async
 
@@ -149,7 +150,7 @@ async def maybe_expire_pending_activity_images(
     """pending 超过超时时间则视为 reject；返回是否发生变更。"""
     if activity.images_audit_status != IMAGES_AUDIT_PENDING:
         return False
-    updated_at = activity.images_audit_updated_at
+    updated_at = to_utc_optional(activity.images_audit_updated_at)
     if updated_at is None:
         return False
     deadline = updated_at + timedelta(minutes=PENDING_TIMEOUT_MINUTES)
