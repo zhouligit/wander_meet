@@ -12,6 +12,7 @@ from app.models.dm_thread import DmThread
 from app.models.dm_thread_read import DmThreadRead
 from app.models.notification import Notification
 from app.models.user_chat_read import UserChatRead
+from app.services.platform_notification import DM_NOTIFICATION_TYPES
 from app.services.chat_unread import get_chat_unread_counts
 
 
@@ -72,6 +73,7 @@ async def count_unread_notifications(db: AsyncSession, user_id: int) -> int:
         select(func.count(Notification.id)).where(
             Notification.user_id == user_id,
             Notification.read_at.is_(None),
+            Notification.type.notin_(DM_NOTIFICATION_TYPES),
         )
     )
     return int(cnt or 0)

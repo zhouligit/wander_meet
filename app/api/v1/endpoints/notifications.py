@@ -15,6 +15,7 @@ from app.schemas.notification import (
     NotificationReadAllData,
     NotificationReadData,
 )
+from app.services.platform_notification import DM_NOTIFICATION_TYPES
 
 router = APIRouter(prefix="/notifications", tags=["notifications"])
 
@@ -27,7 +28,10 @@ async def list_notifications(
     db: AsyncSession = Depends(get_db_session),
     current_user: User = Depends(get_current_user),
 ) -> APIResponse[NotificationListData]:
-    filters = [Notification.user_id == current_user.id]
+    filters = [
+        Notification.user_id == current_user.id,
+        Notification.type.notin_(DM_NOTIFICATION_TYPES),
+    ]
     if read == "unread":
         filters.append(Notification.read_at.is_(None))
     total = (await db.execute(select(func.count(Notification.id)).where(*filters))).scalar_one()
@@ -91,7 +95,11 @@ async def mark_all_read(
     now = datetime.now(UTC)
     result = await db.execute(
         update(Notification)
-        .where(Notification.user_id == current_user.id, Notification.read_at.is_(None))
+        .where(
+            Notification.user_id == current_user.id,
+            Notification.read_at.is_(None),
+            Notification.type.notin_(DM_NOTIFICATION_TYPES),
+        )
         .values(read_at=now)
     )
     await db.commit()
