@@ -555,9 +555,14 @@ async def get_activity_detail(
                 await db.commit()
                 await db.refresh(activity_row)
             cached_detail = cached_detail.model_copy(
-                update=activity_image_fields_for_api(
-                    activity_row, optional_user.id if optional_user else None
-                )
+                update={
+                    **activity_image_fields_for_api(
+                        activity_row, optional_user.id if optional_user else None
+                    ),
+                    **guide_fields_for_api(
+                        activity_row, int(cached_detail.enrolledCount or 0)
+                    ),
+                }
             )
         my_enrollment = None
         if optional_user:

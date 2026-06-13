@@ -133,6 +133,8 @@ async def apply_activity_guide_sections(
     """``raw_sections`` 为 ``None`` 跳过；``{}`` 清空。"""
     if raw_sections is None:
         return
+    if activity.organizer_id != organizer.id:
+        raise HTTPException(status_code=403, detail="Only organizer can update activity guide")
     if not raw_sections:
         activity.guide_sections = None
         return
