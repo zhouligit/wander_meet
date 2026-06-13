@@ -53,9 +53,18 @@ def profile_completion_errors(user: User) -> list[str]:
 
 
 def profile_is_complete(user: User) -> bool:
-    if user.onboarding_completed_at is None:
-        return False
-    return not profile_completion_errors(user)
+    """资料是否已满足登录后门槛：有效昵称 + 男/女 + 出生日期。
+
+    历史用户（曾走完极简引导、库中无 birth_date）仅有昵称+性别时也视为已完成。
+    """
+    errs = profile_completion_errors(user)
+    if not errs:
+        return True
+    if user.onboarding_completed_at is not None:
+        non_birth = [e for e in errs if e != "请选择出生日期"]
+        if not non_birth:
+            return True
+    return False
 
 
 def build_login_user(user: User) -> LoginUser:
