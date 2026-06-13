@@ -160,6 +160,8 @@ class Settings(BaseSettings):
     wx_mp_use_mock: bool = False
     #: 是否调用微信内容安全 API（msgSecCheck）；上线小程序须 true
     wx_content_sec_enabled: bool = True
+    #: 小程序「消息推送」Token（与 mp 后台开发设置里填写的 Token 一致，用于 URL 验签）
+    wx_mp_message_token: str = ""
 
     #: 抖音小程序 AppID / AppSecret（``auth/douyin/login`` 调 code2session）
     dy_mp_appid: str = ""
