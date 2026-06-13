@@ -89,6 +89,12 @@ def _sender(u: User) -> ChatMessageSender:
     )
 
 
+def _sender_or_fallback(u: User | None, user_id: int) -> ChatMessageSender:
+    if u is not None:
+        return _sender(u)
+    return ChatMessageSender(userId=_uid_str(user_id), nickname="用户", avatarUrl=None)
+
+
 async def _assert_thread_member(thread: DmThread, user_id: int) -> None:
     if user_id not in (thread.user_low_id, thread.user_high_id):
         raise HTTPException(status_code=403, detail="Not a participant of this thread")
@@ -272,14 +278,12 @@ async def list_dm_requests(
     for r in rows:
         fu = users_map.get(r.from_user_id)
         tu = users_map.get(r.to_user_id)
-        if not fu or not tu:
-            continue
         items.append(
             DmRequestItem(
                 requestId=f"dmreq_{r.id}",
                 activityId=f"act_{r.activity_id}",
-                fromUser=_sender(fu),
-                toUser=_sender(tu),
+                fromUser=_sender_or_fallback(fu, r.from_user_id),
+                toUser=_sender_or_fallback(tu, r.to_user_id),
                 introText=r.intro_text,
                 status=r.status,
                 threadId=(f"dmthr_{r.thread_id}" if r.thread_id else None),
