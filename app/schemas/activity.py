@@ -102,6 +102,7 @@ class ActivityGuideSyncedOverview(BaseModel):
         return datetime_to_rfc3339_utc_z(v)
 
 
+class ActivityDetailOrganizer(BaseModel):
     userId: str
     nickname: str
     avatarUrl: str | None = None
