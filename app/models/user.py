@@ -1,6 +1,6 @@
-from datetime import datetime
+from datetime import date, datetime
 
-from sqlalchemy import Boolean, DateTime, JSON, String, Text, func
+from sqlalchemy import Boolean, Date, DateTime, JSON, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -21,6 +21,7 @@ class User(Base):
     password_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
     nickname: Mapped[str] = mapped_column(String(32))
     gender: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    birth_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     avatar_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
     bio: Mapped[str | None] = mapped_column(Text, nullable=True)
     tags: Mapped[list | None] = mapped_column(JSON, nullable=True)

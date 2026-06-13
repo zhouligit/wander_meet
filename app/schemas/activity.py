@@ -144,6 +144,8 @@ class ActivityDetailData(BaseModel):
     guideSections: dict[str, str] | None = None
     guideFilled: bool = False
     guideOverview: ActivityGuideSyncedOverview | None = None
+    #: 当前登录用户是否为活动发起人（未登录恒为 false）
+    isOrganizer: bool = False
 
     @field_serializer("startAt", "endAt")
     def _ser_detail_times(self, v: datetime | None) -> str | None:

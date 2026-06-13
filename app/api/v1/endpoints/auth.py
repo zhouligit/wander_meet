@@ -24,7 +24,7 @@ from app.services.acquisition_source import resolve_new_user_acquisition_source
 from app.services.aliyun_sms import AliyunSmsError, send_sms_aliyun_sync
 from app.services.ihuyi_sms import IhuiSmsError, send_sms_submit_sync
 from app.services.ip_rate_limit import enforce_auth_ip_rate_limit
-from app.services.phone_validation import parse_cn_mobile
+from app.services.user_profile import build_login_user
 from app.services.email_auth import (
     authenticate_email_user,
     register_email_user,
@@ -104,14 +104,7 @@ async def _build_login_response(user: User) -> SMSLoginData:
         accessToken=access_token,
         expiresIn=settings.access_token_expires_seconds,
         refreshToken=refresh_raw,
-        user=LoginUser(
-            userId=f"u_{user.id}",
-            nickname=user.nickname,
-            avatarUrl=user.avatar_url,
-            gender=user.gender,
-            status=user.status,
-            onboardingCompletedAt=datetime_to_rfc3339_utc_z(user.onboarding_completed_at),
-        ),
+        user=build_login_user(user),
     )
 
 

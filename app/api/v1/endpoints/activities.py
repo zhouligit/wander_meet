@@ -526,6 +526,7 @@ async def _build_activity_detail_data(
         organizer=_organizer_for_detail(organizer),
         enrolledCount=int(enrolled_count or 0),
         myEnrollment=MyEnrollment(status="joined") if my_enrollment_row else None,
+        isOrganizer=current_user is not None and activity.organizer_id == current_user.id,
         **activity_image_fields_for_api(
             activity, current_user.id if current_user else None
         ),
@@ -562,6 +563,8 @@ async def get_activity_detail(
                     **guide_fields_for_api(
                         activity_row, int(cached_detail.enrolledCount or 0)
                     ),
+                    "isOrganizer": optional_user is not None
+                    and activity_row.organizer_id == optional_user.id,
                 }
             )
         my_enrollment = None
@@ -593,6 +596,7 @@ async def get_activity_detail(
         data.model_copy(
             update={
                 "myEnrollment": None,
+                "isOrganizer": False,
                 **activity_image_fields_for_api(activity, None),
             }
         ),

@@ -28,6 +28,8 @@ class MeData(BaseModel):
     nickname: str
     avatarUrl: str | None = None
     gender: UserGender | None = None
+    birthDate: str | None = None
+    profileComplete: bool = False
     bio: str = ""
     tags: list[str]
     status: str
@@ -51,6 +53,7 @@ class UpdateMeRequest(BaseModel):
     bio: str | None = None
     tags: list[str] | None = None
     gender: UserGender | None = None
+    birthDate: str | None = None
     countryCode: str | None = None
     travelerRoles: list[str] | None = None
     currentPlace: str | None = None

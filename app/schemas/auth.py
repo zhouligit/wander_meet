@@ -56,6 +56,8 @@ class LoginUser(BaseModel):
     nickname: str
     avatarUrl: str | None = None
     gender: str | None = None
+    birthDate: str | None = None
+    profileComplete: bool = False
     status: str
     onboardingCompletedAt: str | None = None
 

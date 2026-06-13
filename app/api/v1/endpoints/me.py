@@ -76,6 +76,13 @@ from app.services.email_auth import user_has_email_account
 from app.services.email_validation import mask_email
 from app.services.user_phone_bind import bind_phone_to_user, mask_user_phone, user_has_phone
 from app.services.user_profile_fields import bio_from_user, tags_from_user
+from app.services.user_profile import (
+    birth_date_for_api,
+    build_login_user,
+    parse_birth_date,
+    profile_completion_errors,
+    profile_is_complete,
+)
 from app.services.content_moderation import assert_text_content_safe, assert_text_fields_safe
 from app.services.wechat_content_security import SCENE_COMMENT, SCENE_PROFILE
 from app.services.wechat_miniapp import WechatLoginError, get_phone_number_from_code
@@ -139,6 +146,8 @@ def build_me_data(user: User) -> MeData:
         nickname=user.nickname,
         avatarUrl=user.avatar_url,
         gender=g,
+        birthDate=birth_date_for_api(user),
+        profileComplete=profile_is_complete(user),
         bio=bio_from_user(user),
         tags=tags_from_user(user),
         status=user.status,
@@ -228,11 +237,21 @@ async def update_me(
     if payload.tags is not None:
         user.tags = list(payload.tags)[:20]
     if payload.gender is not None:
+        if payload.gender == "unspecified":
+            raise HTTPException(status_code=400, detail="请选择男或女")
         if user.gender is not None:
             if payload.gender != user.gender:
                 raise HTTPException(status_code=400, detail="性别提交后不可修改")
         else:
             user.gender = payload.gender
+    if payload.birthDate is not None:
+        if not str(payload.birthDate).strip():
+            user.birth_date = None
+        else:
+            try:
+                user.birth_date = parse_birth_date(payload.birthDate)
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
     if payload.countryCode is not None:
         cc = (payload.countryCode or "").strip().upper()
         user.country_code = cc[:8] if cc else None
@@ -269,6 +288,9 @@ async def update_me(
     if payload.showDistance is not None:
         user.show_distance = bool(payload.showDistance)
     if payload.completeOnboarding is True:
+        errors = profile_completion_errors(user)
+        if errors:
+            raise HTTPException(status_code=400, detail="；".join(errors))
         user.onboarding_completed_at = datetime.now(UTC)
     try:
         await db.commit()
@@ -934,14 +956,7 @@ async def delete_place_activity_alert(
 
 
 def _login_user_from_model(user: User) -> LoginUser:
-    return LoginUser(
-        userId=f"u_{user.id}",
-        nickname=user.nickname,
-        avatarUrl=user.avatar_url,
-        gender=user.gender,
-        status=user.status,
-        onboardingCompletedAt=datetime_to_rfc3339_utc_z(user.onboarding_completed_at),
-    )
+    return build_login_user(user)
 
 
 async def _bind_phone_response(db: AsyncSession, user: User, merged: bool) -> APIResponse[BindPhoneData]:
