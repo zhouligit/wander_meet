@@ -8,10 +8,10 @@ from app.db.session import get_db_session
 from app.services.user_profile_fields import bio_from_user, tags_from_user
 from app.services.growth_trust import build_public_trust_fields
 from app.services.dm_relationship import (
+    are_dm_peers_mutually_connected,
     either_blocked,
     get_thread_by_users,
     is_activity_participant,
-    user_considers_peer_connected,
 )
 from app.models.activity import Activity
 from app.models.dm_request import DmRequest
@@ -92,7 +92,7 @@ async def get_user_dm_context(
         )
 
     thread = await get_thread_by_users(db, current_user.id, target_id)
-    if thread and await user_considers_peer_connected(db, current_user.id, target_id):
+    if thread and await are_dm_peers_mutually_connected(db, current_user.id, target_id):
         return APIResponse(
             data=UserDmContextData(
                 threadId=f"dmthr_{thread.id}",

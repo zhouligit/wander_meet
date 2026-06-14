@@ -25,6 +25,8 @@ from app.services.wechat_content_security import SCENE_COMMENT, SCENE_PROFILE, S
 from app.services.chat_message_payload import build_message_row_content
 from app.services.chat_location import chat_last_message_preview, message_content_fields
 from app.services.dm_relationship import (
+    NOT_FRIENDS_MESSAGE,
+    are_dm_peers_mutually_connected,
     clear_thread_removals,
     either_blocked,
     get_thread_by_users,
@@ -42,6 +44,7 @@ from app.schemas.direct_chat import (
     DmRequestCreatedData,
     DmRequestItem,
     DmRequestListData,
+    DirectChatContextData,
     DirectMessageItem,
     DirectMessagesData,
     MyDirectChatItem,
@@ -154,7 +157,7 @@ async def create_dm_request(
         )
 
     existing_thread = await get_thread_by_users(db, current_user.id, to_user_id)
-    if existing_thread and await user_considers_peer_connected(
+    if existing_thread and await are_dm_peers_mutually_connected(
         db, current_user.id, to_user_id
     ):
         return APIResponse(
@@ -525,6 +528,40 @@ async def remove_direct_chat_friend(
     return APIResponse(data={"ok": True})
 
 
+@router.get("/direct-chats/{thread_id}/context")
+async def get_direct_chat_context(
+    thread_id: str,
+    db: AsyncSession = Depends(get_db_session),
+    current_user: User = Depends(get_current_user),
+) -> APIResponse[DirectChatContextData]:
+    tid = _parse_dmthr_id(thread_id)
+    thread = await db.scalar(select(DmThread).where(DmThread.id == tid))
+    if not thread:
+        return APIResponse(
+            code=404,
+            message="thread not found",
+            data=DirectChatContextData(
+                threadId=thread_id,
+                peerUserId="",
+                canSendMessage=False,
+                statusMessage=NOT_FRIENDS_MESSAGE,
+            ),
+        )
+    await _assert_thread_member(thread, current_user.id)
+    peer = _peer_id(thread, current_user.id)
+    visible = await is_thread_visible_for_user(db, current_user.id, thread)
+    mutual = await are_dm_peers_mutually_connected(db, current_user.id, peer)
+    can_send = visible and mutual
+    return APIResponse(
+        data=DirectChatContextData(
+            threadId=f"dmthr_{tid}",
+            peerUserId=_uid_str(peer),
+            canSendMessage=can_send,
+            statusMessage=None if can_send else NOT_FRIENDS_MESSAGE,
+        )
+    )
+
+
 @router.get("/direct-chats/{thread_id}/messages")
 async def list_direct_messages(
     thread_id: str,
@@ -577,7 +614,7 @@ async def send_direct_message(
     thread = await db.scalar(select(DmThread).where(DmThread.id == tid))
     if not thread:
         raise HTTPException(status_code=404, detail="Thread not found")
-    await _assert_thread_accessible(db, thread, current_user.id)
+    await _assert_can_send_direct_message(db, thread, current_user.id)
 
     await moderate_send_message_request(current_user, payload)
     msg_type, text_content, image_url = build_message_row_content(

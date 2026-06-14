@@ -89,3 +89,10 @@ class MyDirectChatsData(BaseModel):
     total: int
     page: int
     pageSize: int
+
+
+class DirectChatContextData(BaseModel):
+    threadId: str
+    peerUserId: str
+    canSendMessage: bool
+    statusMessage: str | None = None

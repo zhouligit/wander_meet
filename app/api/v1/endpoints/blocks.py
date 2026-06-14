@@ -9,6 +9,7 @@ from app.models.user import User
 from app.models.user_block import UserBlock
 from app.schemas.block import BlockCreateRequest, BlockData, BlockListData, BlockListItem
 from app.schemas.common import APIResponse
+from app.services.dm_relationship import clear_thread_removals, get_thread_by_users
 
 router = APIRouter(prefix="/blocks", tags=["blocks"])
 
@@ -47,6 +48,9 @@ async def delete_block(
     )
     if block:
         await db.delete(block)
+        thread = await get_thread_by_users(db, current_user.id, blocked_id)
+        if thread:
+            await clear_thread_removals(db, thread.id)
         await db.commit()
     return APIResponse(data={"ok": True})
 

@@ -13,6 +13,8 @@ from app.models.dm_thread import DmThread
 from app.models.dm_thread_removal import DmThreadRemoval
 from app.models.user_block import UserBlock
 
+NOT_FRIENDS_MESSAGE = "不是好友关系"
+
 
 def sort_user_pair(a: int, b: int) -> tuple[int, int]:
     return (a, b) if a < b else (b, a)
@@ -178,3 +180,13 @@ async def user_considers_peer_connected(
     if await either_blocked(db, user_id, peer_id):
         return False
     return True
+
+
+async def are_dm_peers_mutually_connected(
+    db: AsyncSession, u1: int, u2: int
+) -> bool:
+    """双方是否仍可私聊（任一方删除或拉黑则视为非好友）。"""
+    return (
+        await user_considers_peer_connected(db, u1, u2)
+        and await user_considers_peer_connected(db, u2, u1)
+    )
