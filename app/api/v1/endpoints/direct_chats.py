@@ -219,8 +219,8 @@ async def create_dm_request(
         Notification(
             user_id=to_user_id,
             type="dm_request",
-            title="私聊申请",
-            body=f"{current_user.nickname} 申请与你私聊",
+            title="好友申请",
+            body=f"{current_user.nickname} 申请加你为好友",
             payload_json={
                 "dmRequestId": f"dmreq_{req.id}",
                 "activityId": f"act_{activity_pk}",
@@ -345,8 +345,8 @@ async def accept_dm_request(
             Notification(
                 user_id=req.from_user_id,
                 type="dm_request_accepted",
-                title="私聊已开启",
-                body=f"{current_user.nickname} 已同意你的私聊申请",
+                title="已成为好友",
+                body=f"{current_user.nickname} 已同意你的好友申请",
                 payload_json={
                     "dmRequestId": f"dmreq_{req.id}",
                     "threadId": f"dmthr_{thread.id}",
