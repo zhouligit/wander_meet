@@ -21,6 +21,7 @@ from app.services.content_moderation import (
     assert_text_fields_safe,
     moderate_send_message_request,
 )
+from app.services.user_profile import assert_user_profile_complete
 from app.services.wechat_content_security import SCENE_COMMENT, SCENE_PROFILE, SCENE_SOCIAL
 from app.services.chat_message_payload import build_message_row_content
 from app.services.chat_location import chat_last_message_preview, message_content_fields
@@ -122,6 +123,7 @@ async def create_dm_request(
     db: AsyncSession = Depends(get_db_session),
     current_user: User = Depends(get_current_user),
 ) -> APIResponse[DmRequestCreatedData]:
+    assert_user_profile_complete(current_user)
     activity_pk = _parse_activity_id_param(activity_id)
     to_uid_s = payload.toUserId.strip()
     if to_uid_s.startswith("u_"):
@@ -614,6 +616,7 @@ async def send_direct_message(
     thread = await db.scalar(select(DmThread).where(DmThread.id == tid))
     if not thread:
         raise HTTPException(status_code=404, detail="Thread not found")
+    assert_user_profile_complete(current_user)
     await _assert_can_send_direct_message(db, thread, current_user.id)
 
     await moderate_send_message_request(current_user, payload)

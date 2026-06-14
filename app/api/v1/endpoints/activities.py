@@ -29,6 +29,7 @@ from app.services.city_group_host import (
 )
 from app.services.content_moderation import assert_text_fields_safe, moderate_send_message_request
 from app.services.user_phone_bind import assert_user_phone_bound
+from app.services.user_profile import assert_user_profile_complete
 from app.services.wechat_content_security import SCENE_FORUM, SCENE_SOCIAL
 from app.services.chat_chain_signup import (
     add_or_update_entry,
@@ -613,6 +614,7 @@ async def create_activity(
 ) -> APIResponse[ActivityDetailData]:
     if current_user.status != "active":
         raise HTTPException(status_code=403, detail="User is restricted")
+    assert_user_profile_complete(current_user)
     assert_user_phone_bound(current_user)
 
     start_at_utc = to_utc(payload.startAt)
@@ -712,6 +714,7 @@ async def enroll_activity(
     activity = await db.scalar(select(Activity).where(Activity.id == activity_pk))
     if not activity:
         raise HTTPException(status_code=404, detail="Activity not found")
+    assert_user_profile_complete(current_user)
     assert_user_phone_bound(current_user)
 
     enrollment = await enroll_user_in_activity(db, current_user.id, activity)
@@ -1036,6 +1039,7 @@ async def get_messages(
     - ``cursor``：返回该 id **之前**的更旧消息（上拉历史，与 ``after`` 互斥时 ``after`` 优先）。
     """
     activity_pk = _parse_activity_id(activity_id)
+    assert_user_profile_complete(current_user)
     assert_user_phone_bound(current_user)
     await _assert_member_or_organizer(activity_pk, current_user.id, db)
     _ = direction
@@ -1104,6 +1108,7 @@ async def send_message(
     current_user: User = Depends(get_current_user),
 ) -> APIResponse[ChatMessageItem]:
     activity_pk = _parse_activity_id(activity_id)
+    assert_user_profile_complete(current_user)
     assert_user_phone_bound(current_user)
     await _assert_member_or_organizer(activity_pk, current_user.id, db)
 
@@ -1213,6 +1218,7 @@ async def chain_signup_join(
     current_user: User = Depends(get_current_user),
 ) -> APIResponse[ChatMessageItem]:
     activity_pk = _parse_activity_id(activity_id)
+    assert_user_profile_complete(current_user)
     assert_user_phone_bound(current_user)
     await _assert_member_or_organizer(activity_pk, current_user.id, db)
     activity = await db.scalar(select(Activity).where(Activity.id == activity_pk))
@@ -1254,6 +1260,7 @@ async def chain_signup_leave(
     current_user: User = Depends(get_current_user),
 ) -> APIResponse[ChatMessageItem]:
     activity_pk = _parse_activity_id(activity_id)
+    assert_user_profile_complete(current_user)
     assert_user_phone_bound(current_user)
     await _assert_member_or_organizer(activity_pk, current_user.id, db)
     activity = await db.scalar(select(Activity).where(Activity.id == activity_pk))
@@ -1278,6 +1285,7 @@ async def chain_signup_close(
     current_user: User = Depends(get_current_user),
 ) -> APIResponse[ChatMessageItem]:
     activity_pk = _parse_activity_id(activity_id)
+    assert_user_profile_complete(current_user)
     assert_user_phone_bound(current_user)
     await _assert_member_or_organizer(activity_pk, current_user.id, db)
     activity = await db.scalar(select(Activity).where(Activity.id == activity_pk))

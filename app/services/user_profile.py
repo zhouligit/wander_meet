@@ -5,11 +5,15 @@ from __future__ import annotations
 import re
 from datetime import UTC, date, datetime
 
+from fastapi import HTTPException
+
 from app.models.user import User
 from app.schemas.auth import LoginUser
 from app.schemas.datetime_iso import datetime_to_rfc3339_utc_z
 
 _AUTO_NICKNAME_RE = re.compile(r"^旅人.{1,28}$")
+
+PROFILE_INCOMPLETE_DETAIL = "请先完善资料"
 
 
 def is_auto_nickname(nickname: str | None) -> bool:
@@ -50,6 +54,12 @@ def profile_completion_errors(user: User) -> list[str]:
     if user.birth_date is None:
         errs.append("请选择出生日期")
     return errs
+
+
+def assert_user_profile_complete(user: User) -> None:
+    """报名、进群、发活动等需完整资料的操作前调用。"""
+    if not profile_is_complete(user):
+        raise HTTPException(status_code=403, detail=PROFILE_INCOMPLETE_DETAIL)
 
 
 def profile_is_complete(user: User) -> bool:
