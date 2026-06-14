@@ -49,10 +49,6 @@ def profile_completion_errors(user: User) -> list[str]:
     errs: list[str] = []
     if is_auto_nickname(user.nickname):
         errs.append("请填写昵称（系统默认昵称不可用）")
-    if user.gender not in ("male", "female"):
-        errs.append("请选择性别（男或女）")
-    if user.birth_date is None:
-        errs.append("请选择出生日期")
     return errs
 
 
@@ -63,18 +59,8 @@ def assert_user_profile_complete(user: User) -> None:
 
 
 def profile_is_complete(user: User) -> bool:
-    """资料是否已满足登录后门槛：有效昵称 + 男/女 + 出生日期。
-
-    历史用户（曾走完极简引导、库中无 birth_date）仅有昵称+性别时也视为已完成。
-    """
-    errs = profile_completion_errors(user)
-    if not errs:
-        return True
-    if user.onboarding_completed_at is not None:
-        non_birth = [e for e in errs if e != "请选择出生日期"]
-        if not non_birth:
-            return True
-    return False
+    """资料是否已满足门槛：有效昵称（非系统默认「旅人xxxx」）。"""
+    return not profile_completion_errors(user)
 
 
 def build_login_user(user: User) -> LoginUser:
