@@ -21,7 +21,7 @@ from app.services.wechat_content_security import SCENE_FORUM
 
 _TZ_BJ = ZoneInfo("Asia/Shanghai")
 
-# 活动开始后仅允许修改说明
+# 活动开始后仅允许修改简介（完整说明走 guideSections）
 _IN_PROGRESS_ALLOWED = frozenset({"description"})
 
 
@@ -42,7 +42,7 @@ def _collect_change_lines(activity: Activity, updates: dict) -> list[str]:
     if "title" in updates and updates["title"] != activity.title:
         lines.append(f"标题：{updates['title']}")
     if "description" in updates and updates["description"] != activity.description:
-        lines.append("活动说明已更新")
+        lines.append("活动简介已更新")
     if "startAt" in updates:
         new_start = to_utc(updates["startAt"])
         if new_start != to_utc(activity.start_at):
@@ -83,7 +83,7 @@ async def apply_activity_update(
     if started:
         disallowed = set(updates.keys()) - _IN_PROGRESS_ALLOWED
         if disallowed:
-            raise HTTPException(status_code=400, detail="活动进行中仅可修改活动说明")
+            raise HTTPException(status_code=400, detail="活动进行中仅可修改活动简介")
 
     enrolled_count = int(
         await db.scalar(
@@ -115,7 +115,7 @@ async def apply_activity_update(
                 detail="开始时间需在7天内：首页只展示近7天可参加的活动",
             )
 
-    if "endAt" in updates and "startAt" in updates:
+    if "endAt" in updates and "startAt" in updates and updates["endAt"] is not None:
         if to_utc(updates["endAt"]) <= to_utc(updates["startAt"]):
             raise HTTPException(status_code=400, detail="结束时间需晚于开始时间")
     if "endAt" in updates and "startAt" not in updates and updates["endAt"] is not None:
