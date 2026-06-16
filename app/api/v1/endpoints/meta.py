@@ -12,7 +12,7 @@ from app.services.meta_cache import (
     get_cached_onboarding_meta,
 )
 from app.services.place_suggestions import search_place_suggestions
-from app.services.activity_guide import guide_template_for_meta
+from app.services.activity_guide import GUIDE_SECTION_PLACEHOLDERS, guide_template_for_meta
 
 router = APIRouter(prefix="/meta", tags=["meta"])
 
@@ -70,6 +70,7 @@ async def activity_guide_meta(response: Response) -> APIResponse[ActivityGuideTe
     return APIResponse(
         data=ActivityGuideTemplateData(
             sections=[ActivityGuideTemplateSection(**r) for r in rows],
+            overviewPlaceholder=GUIDE_SECTION_PLACEHOLDERS.get("overviewNote", ""),
         )
     )
 

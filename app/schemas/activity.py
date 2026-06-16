@@ -83,6 +83,7 @@ class ActivityGuideTemplateSection(BaseModel):
 
 class ActivityGuideTemplateData(BaseModel):
     sections: list[ActivityGuideTemplateSection]
+    overviewPlaceholder: str = ""
 
 
 class ActivityGuideSyncedOverview(BaseModel):

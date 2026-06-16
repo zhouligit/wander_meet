@@ -1,4 +1,4 @@
-"""活动说明页：全站模板章节 + 自由编辑；概况/费用与活动主字段引用同步。"""
+"""活动说明页：全站模板章节 + 各章节自由编辑。"""
 
 from __future__ import annotations
 
@@ -19,14 +19,14 @@ GUIDE_SECTION_KEYS = (
 )
 
 GUIDE_SECTION_LABELS: dict[str, str] = {
-    "overviewNote": "活动概况补充",
+    "overviewNote": "活动概况",
     "itinerary": "行程安排",
     "equipment": "装备要求",
     "enrollmentRequirements": "报名条件",
-    "feeNote": "费用说明补充",
+    "feeNote": "费用说明",
     "registration": "报名方式",
     "risk": "风险提示",
-    "environment": "环保要求",
+    "environment": "补充说明",
 }
 
 _GUIDE_SECTION_MAX_LEN = 8000
@@ -86,14 +86,14 @@ def guide_template_for_meta() -> list[dict[str, str]]:
 
 
 GUIDE_SECTION_PLACEHOLDERS: dict[str, str] = {
+    "overviewNote": "可填写活动名称、时间、地点、人数及概况说明等。",
     "itinerary": "按时间列出集合、出发、登顶、下撤等节点；可注明「实际时间灵活调整」。",
     "equipment": "必备 / 建议 / 禁止携带的装备清单。",
     "enrollmentRequirements": "年龄、经验、健康要求、需签署协议等。",
-    "feeNote": "在上方引用费用基础上，补充包含/不含项目、退改政策等。",
+    "feeNote": "费用金额、包含/不含项目、退改政策等。",
     "registration": "进群、联系微信、缴费方式等。",
     "risk": "天气、路况、人身风险及免责提示。",
     "environment": "无痕山野、垃圾带走等要求。",
-    "overviewNote": "可补充难度等级、集合细节等（名称/时间/地点/人数已自动引用）。",
 }
 
 

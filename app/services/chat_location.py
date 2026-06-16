@@ -223,7 +223,8 @@ def message_content_fields(
 
 def chat_last_message_preview(msg_type: str, text_content: str | None, image_url: str | None) -> str:
     if msg_type == "text":
-        return (text_content or "").strip() or ""
+        text, _ = decode_text_payload(text_content)
+        return (text or "").strip() or ""
     if msg_type == "image":
         return "[图片]"
     if msg_type == "sticker":
