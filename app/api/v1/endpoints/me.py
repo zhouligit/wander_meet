@@ -94,6 +94,7 @@ from app.services.bos_storage import (
     put_chat_image_bytes,
     put_feed_image_bytes,
     put_activity_image_bytes,
+    resolve_bos_read_url,
     validate_stored_avatar_url,
 )
 from app.db.session import redis_client
@@ -130,6 +131,14 @@ def _parse_iso_datetime(value: str | None) -> datetime | None:
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=UTC)
     return dt.astimezone(UTC)
+
+
+def _with_presigned_me_avatar(data: MeData) -> MeData:
+    return data.model_copy(update={"avatarUrl": resolve_bos_read_url(data.avatarUrl)})
+
+
+def me_data_for_response(user: User) -> MeData:
+    return _with_presigned_me_avatar(build_me_data(user))
 
 
 def build_me_data(user: User) -> MeData:
@@ -202,10 +211,12 @@ async def get_me(current_user: User = Depends(get_current_user)) -> APIResponse[
     is_admin = (current_user.role or "").strip() == "admin"
     cached = await get_cached_me_data(current_user.id)
     if cached is not None:
-        return APIResponse(data=cached.model_copy(update={"isAdmin": is_admin}))
+        return APIResponse(
+            data=_with_presigned_me_avatar(cached.model_copy(update={"isAdmin": is_admin}))
+        )
     data = build_me_data(current_user)
     await set_cached_me_data(current_user.id, data)
-    return APIResponse(data=data)
+    return APIResponse(data=_with_presigned_me_avatar(data))
 
 
 @router.patch("")
@@ -314,7 +325,7 @@ async def update_me(
     except Exception:
         logger.warning("invalidate_user_cache failed user_id=%s", user.id, exc_info=True)
 
-    return APIResponse(data=build_me_data(user))
+    return APIResponse(data=me_data_for_response(user))
 
 
 def _my_activities_order(time_scope: str, now_utc: datetime):
@@ -784,7 +795,7 @@ async def upload_avatar_file(
     except Exception:
         logger.warning("invalidate_user_cache failed user_id=%s", user.id, exc_info=True)
 
-    return APIResponse(data=build_me_data(user))
+    return APIResponse(data=me_data_for_response(user))
 
 
 @router.post("/chat-images")
@@ -798,7 +809,7 @@ async def upload_chat_image_file(
     if file.filename and "." in file.filename:
         file_ext = file.filename.rsplit(".", 1)[-1]
     try:
-        public_url = await asyncio.to_thread(
+        object_key = await asyncio.to_thread(
             put_chat_image_bytes,
             user_id=current_user.id,
             data=body,
@@ -807,7 +818,7 @@ async def upload_chat_image_file(
         )
     except BosNotConfiguredError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
-    return APIResponse(data=ChatImageUploadData(imageUrl=public_url))
+    return APIResponse(data=ChatImageUploadData(imageUrl=object_key))
 
 
 @router.post("/feed/images")
@@ -821,7 +832,7 @@ async def upload_feed_image_file(
     if file.filename and "." in file.filename:
         file_ext = file.filename.rsplit(".", 1)[-1]
     try:
-        public_url = await asyncio.to_thread(
+        object_key = await asyncio.to_thread(
             put_feed_image_bytes,
             user_id=current_user.id,
             data=body,
@@ -830,7 +841,7 @@ async def upload_feed_image_file(
         )
     except BosNotConfiguredError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
-    return APIResponse(data=FeedImageUploadData(imageUrl=public_url))
+    return APIResponse(data=FeedImageUploadData(imageUrl=object_key))
 
 
 @router.post("/activity/images")
@@ -844,7 +855,7 @@ async def upload_activity_image_file(
     if file.filename and "." in file.filename:
         file_ext = file.filename.rsplit(".", 1)[-1]
     try:
-        public_url = await asyncio.to_thread(
+        object_key = await asyncio.to_thread(
             put_activity_image_bytes,
             user_id=current_user.id,
             data=body,
@@ -853,7 +864,7 @@ async def upload_activity_image_file(
         )
     except BosNotConfiguredError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
-    return APIResponse(data=FeedImageUploadData(imageUrl=public_url))
+    return APIResponse(data=FeedImageUploadData(imageUrl=object_key))
 
 
 @router.get("/place-activity-alerts")

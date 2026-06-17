@@ -14,7 +14,11 @@ from app.models.feed import Post, PostComment, PostLike, UserFollow
 from app.models.user import User
 from app.models.user_block import UserBlock
 from app.services.activity_query import effective_activity_status, to_utc
-from app.services.bos_storage import validate_stored_feed_image_url
+from app.services.bos_storage import (
+    resolve_bos_read_url,
+    resolve_bos_read_urls,
+    validate_stored_feed_image_url,
+)
 from app.services.city_hall import EVENT_ACTIVITY_KIND, is_city_hall_activity
 from app.services.local_text_content_filter import local_text_blocked_reason
 from app.services.content_moderation import assert_image_urls_safe, assert_text_content_safe
@@ -119,7 +123,7 @@ async def _author_payload(db: AsyncSession, user: User) -> dict:
     return {
         "userId": _uid_str(user.id),
         "nickname": user.nickname or "用户",
-        "avatarUrl": user.avatar_url,
+        "avatarUrl": resolve_bos_read_url(user.avatar_url),
         "trustLevel": trust.get("trustLevel"),
         "photoVerified": trust.get("photoVerified", False),
     }
@@ -162,7 +166,7 @@ async def _post_to_item(
         "cityCode": post.city_code,
         "activityId": f"act_{post.activity_id}" if post.activity_id else None,
         "content": post.content,
-        "images": list(post.images or []),
+        "images": resolve_bos_read_urls(list(post.images or [])),
         "locationName": post.location_name,
         "lat": float(post.lat) if post.lat is not None else None,
         "lng": float(post.lng) if post.lng is not None else None,

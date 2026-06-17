@@ -10,6 +10,7 @@ from fastapi import HTTPException
 from app.services.chat_activity_rec import decode_activity_rec_payload
 from app.services.chat_chain_signup import decode_chain_signup_payload
 from app.services.chat_mentions import decode_text_payload
+from app.services.bos_storage import resolve_bos_read_url
 from app.schemas.activity import SendMessageRequest
 
 _LOCATION_NAME_MAX = 120
@@ -160,7 +161,7 @@ def message_content_fields(
         return {
             "text": None,
             "stickerId": None,
-            "imageUrl": image_url,
+            "imageUrl": resolve_bos_read_url(image_url),
             "locationName": None,
             "address": None,
             "lat": None,

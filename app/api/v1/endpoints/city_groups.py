@@ -50,6 +50,7 @@ from app.schemas.common import APIResponse
 from app.schemas.datetime_iso import datetime_to_rfc3339_utc_z
 from app.schemas.activity import ChatMessageItem, ChatMessageSender
 from app.services.chat_location import message_content_fields
+from app.services.bos_storage import resolve_bos_read_url
 from app.services.activity_enroll import enroll_user_in_activity
 from app.services.user_phone_bind import assert_user_phone_bound
 from app.services.user_profile import assert_user_profile_complete
@@ -537,7 +538,7 @@ async def recommend_activity_to_city_group(
             sender=ChatMessageSender(
                 userId=f"u_{current_user.id}",
                 nickname=current_user.nickname,
-                avatarUrl=current_user.avatar_url,
+                avatarUrl=resolve_bos_read_url(current_user.avatar_url),
             ),
             msgType=message.msg_type,
             **message_content_fields(message.msg_type, message.text_content, message.image_url),

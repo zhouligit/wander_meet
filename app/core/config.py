@@ -156,6 +156,10 @@ class Settings(BaseSettings):
     bos_chat_image_max_bytes: int = 8 * 1024 * 1024
     bos_activity_image_max_bytes: int = 8 * 1024 * 1024
     bos_presign_expires_seconds: int = 1800
+    #: 读对象预签名有效期（秒，默认 1h，与 bos_test 一致）
+    bos_presign_read_expires_seconds: int = 3600
+    #: 自定义域名 endpoint 时建议 true（见 BOS SDK path_style_enable）
+    bos_path_style_enable: bool = True
 
     #: 微信小程序 AppID / AppSecret（``auth/wechat/login`` 调 jscode2session）
     wx_mp_appid: str = ""

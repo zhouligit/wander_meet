@@ -64,6 +64,7 @@ from app.services.activity_query import effective_activity_status
 from app.services.bos_storage import (
     BosNotConfiguredError,
     put_photo_verify_bytes,
+    resolve_bos_read_url,
     validate_stored_chat_image_url,
     validate_stored_photo_selfie_url,
 )
@@ -410,7 +411,7 @@ async def meet_review_candidates(
         MeetReviewCandidate(
             userId=_uid_str(uid),
             nickname=users_map[uid].nickname if uid in users_map else "参与者",
-            avatarUrl=users_map[uid].avatar_url if uid in users_map else None,
+            avatarUrl=resolve_bos_read_url(users_map[uid].avatar_url) if uid in users_map else None,
         )
         for uid in candidate_ids
     ]
@@ -642,7 +643,7 @@ async def upload_photo_verification(
     if file.filename and "." in file.filename:
         file_ext = file.filename.rsplit(".", 1)[-1]
     try:
-        public_url = await asyncio.to_thread(
+        object_key = await asyncio.to_thread(
             put_photo_verify_bytes,
             user_id=current_user.id,
             data=body,
@@ -651,7 +652,11 @@ async def upload_photo_verification(
         )
     except BosNotConfiguredError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
-    return APIResponse(data=PhotoVerificationUploadData(selfieUrl=public_url))
+    return APIResponse(
+        data=PhotoVerificationUploadData(
+            selfieUrl=resolve_bos_read_url(object_key) or object_key
+        )
+    )
 
 
 @me_router.get("/photo-verification")

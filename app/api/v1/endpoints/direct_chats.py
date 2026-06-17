@@ -24,7 +24,7 @@ from app.services.content_moderation import (
 from app.services.user_profile import assert_user_profile_complete
 from app.services.wechat_content_security import SCENE_COMMENT, SCENE_PROFILE, SCENE_SOCIAL
 from app.services.chat_message_payload import build_message_row_content
-from app.services.chat_location import chat_last_message_preview, message_content_fields
+from app.services.bos_storage import resolve_bos_read_url
 from app.services.dm_relationship import (
     NOT_FRIENDS_MESSAGE,
     are_dm_peers_mutually_connected,
@@ -89,7 +89,7 @@ def _uid_str(uid: int) -> str:
 
 def _sender(u: User) -> ChatMessageSender:
     return ChatMessageSender(
-        userId=_uid_str(u.id), nickname=u.nickname, avatarUrl=u.avatar_url
+        userId=_uid_str(u.id), nickname=u.nickname, avatarUrl=resolve_bos_read_url(u.avatar_url)
     )
 
 
@@ -501,7 +501,7 @@ async def my_direct_chats(
                 threadId=f"dmthr_{t.id}",
                 peerUserId=_uid_str(pu.id),
                 peerNickname=pu.nickname,
-                peerAvatarUrl=pu.avatar_url,
+                peerAvatarUrl=resolve_bos_read_url(pu.avatar_url),
                 lastMessage=last_message,
                 lastMessageAt=last_at,
                 unreadCount=int(unread_map.get(t.id, 0)),

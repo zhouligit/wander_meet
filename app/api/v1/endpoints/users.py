@@ -21,6 +21,7 @@ from app.schemas.common import APIResponse
 from app.schemas.user_public import UserDmContextData, UserPublicProfileData
 from app.schemas.city_group import CityHostBadgeItem
 from app.services.city_group_host import list_city_host_badges
+from app.services.bos_storage import resolve_bos_read_url
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -182,7 +183,7 @@ async def get_user_public_profile(
     data = UserPublicProfileData(
         userId=f"u_{target.id}",
         nickname=target.nickname,
-        avatarUrl=target.avatar_url,
+        avatarUrl=resolve_bos_read_url(target.avatar_url),
         gender=pub_g,
         bio=bio_from_user(target),
         tags=tags_from_user(target),

@@ -9,6 +9,7 @@ from fastapi import HTTPException
 from app.models.user import User
 from app.schemas.activity import SendMessageRequest
 from app.services.contact_content_filter import contact_text_blocked_reason
+from app.services.bos_storage import resolve_bos_read_url
 from app.services.sensitive_content_filter import sensitive_text_blocked_reason
 from app.services.wechat_content_security import (
     CONTENT_VIOLATION_MESSAGE,
@@ -70,7 +71,8 @@ async def assert_image_urls_safe(
     for url in urls or []:
         u = (url or "").strip()
         if u:
-            await media_check_async(media_url=u, openid=user.mp_openid, scene=scene)
+            fetch_url = resolve_bos_read_url(u) or u
+            await media_check_async(media_url=fetch_url, openid=user.mp_openid, scene=scene)
 
 
 async def moderate_send_message_request(

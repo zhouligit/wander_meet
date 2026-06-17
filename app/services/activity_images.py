@@ -14,7 +14,7 @@ from app.models.activity import Activity
 from app.models.activity_media_audit import ActivityMediaAudit
 from app.models.user import User
 from app.services.activity_query import to_utc_optional
-from app.services.bos_storage import validate_stored_activity_image_url
+from app.services.bos_storage import validate_stored_activity_image_url, resolve_bos_read_url
 from app.services.wechat_content_security import SCENE_FORUM, media_check_async
 
 logger = logging.getLogger(__name__)
@@ -37,18 +37,23 @@ def validate_activity_image_urls(user_id: int, urls: list[str]) -> list[str]:
     out: list[str] = []
     for raw in urls:
         u = validate_stored_activity_image_url(raw, user_id)
-        base = u.split("?", 1)[0]
-        if base in seen:
+        if u in seen:
             continue
-        seen.add(base)
+        seen.add(u)
         out.append(u)
     return out
 
 
 def public_cover_image_url(activity: Activity) -> str | None:
     if activity.images_audit_status == IMAGES_AUDIT_PASS and activity.cover_image_url:
-        return activity.cover_image_url
+        return resolve_bos_read_url(activity.cover_image_url)
     return None
+
+
+def _presigned_image_list(urls: list[str] | None) -> list[str] | None:
+    if not urls:
+        return None
+    return [resolve_bos_read_url(u) or u for u in urls]
 
 
 def activity_image_fields_for_api(
@@ -59,14 +64,14 @@ def activity_image_fields_for_api(
     status = activity.images_audit_status or IMAGES_AUDIT_NONE
     if is_organizer:
         return {
-            "coverImageUrl": activity.cover_image_url,
-            "images": list(activity.images or []) if activity.images else None,
+            "coverImageUrl": resolve_bos_read_url(activity.cover_image_url),
+            "images": _presigned_image_list(list(activity.images or []) if activity.images else None),
             "imagesAuditStatus": status,
         }
     if status == IMAGES_AUDIT_PASS:
         return {
-            "coverImageUrl": activity.cover_image_url,
-            "images": list(activity.images or []) if activity.images else None,
+            "coverImageUrl": resolve_bos_read_url(activity.cover_image_url),
+            "images": _presigned_image_list(list(activity.images or []) if activity.images else None),
             "imagesAuditStatus": status,
         }
     return {
@@ -131,7 +136,11 @@ async def apply_activity_images(
     trace_entries: list[dict] = []
     openid = (organizer.mp_openid or "").strip()
     for idx, url in enumerate(validated):
-        trace_id = await media_check_async(media_url=url, openid=openid, scene=SCENE_FORUM)
+        trace_id = await media_check_async(
+            media_url=resolve_bos_read_url(url) or url,
+            openid=openid,
+            scene=SCENE_FORUM,
+        )
         trace_entries.append(
             {
                 "index": idx,

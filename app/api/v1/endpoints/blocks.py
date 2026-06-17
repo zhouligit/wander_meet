@@ -10,6 +10,7 @@ from app.models.user_block import UserBlock
 from app.schemas.block import BlockCreateRequest, BlockData, BlockListData, BlockListItem
 from app.schemas.common import APIResponse
 from app.services.dm_relationship import clear_thread_removals, get_thread_by_users
+from app.services.bos_storage import resolve_bos_read_url
 
 router = APIRouter(prefix="/blocks", tags=["blocks"])
 
@@ -86,7 +87,7 @@ async def list_blocks(
                 BlockListItem(
                     blockedUserId=f"u_{u.id}",
                     nickname=u.nickname,
-                    avatarUrl=u.avatar_url,
+                    avatarUrl=resolve_bos_read_url(u.avatar_url),
                     createdAt=b.created_at,
                 )
                 for b, u in rows

@@ -39,6 +39,7 @@ from app.services.chat_chain_signup import (
 from app.services.chat_mentions import build_validated_text_content
 from app.services.chat_message_payload import build_message_row_content
 from app.services.chat_location import message_content_fields
+from app.services.bos_storage import resolve_bos_read_url
 from app.db.session import get_db_session
 from app.services.activity_lifecycle import mark_activity_ended
 from app.services.activity_update import (
@@ -126,7 +127,7 @@ def _organizer_for_detail(org: User | None) -> ActivityDetailOrganizer:
     return ActivityDetailOrganizer(
         userId=f"u_{org.id}",
         nickname=org.nickname,
-        avatarUrl=org.avatar_url,
+        avatarUrl=resolve_bos_read_url(org.avatar_url),
         bio=bio_from_user(org),
         tags=tags_from_user(org),
     )
@@ -975,7 +976,7 @@ async def activity_members(
         ActivityMemberItem(
             userId=f"u_{u.id}",
             nickname=u.nickname,
-            avatarUrl=u.avatar_url,
+            avatarUrl=resolve_bos_read_url(u.avatar_url),
             role="member",
             joinedAt=en.created_at,
         )
@@ -998,7 +999,7 @@ async def activity_members(
                     ActivityMemberItem(
                         userId=uid,
                         nickname=user.nickname,
-                        avatarUrl=user.avatar_url,
+                        avatarUrl=resolve_bos_read_url(user.avatar_url),
                         role=host.role,
                         joinedAt=host.appointed_at,
                     )
@@ -1014,7 +1015,7 @@ async def activity_members(
                     ActivityMemberItem(
                         userId=uid,
                         nickname=organizer.nickname,
-                        avatarUrl=organizer.avatar_url,
+                        avatarUrl=resolve_bos_read_url(organizer.avatar_url),
                         role="organizer",
                         joinedAt=activity.created_at,
                     ),
@@ -1087,7 +1088,7 @@ async def get_messages(
             sender=ChatMessageSender(
                 userId=f"u_{user.id}",
                 nickname=user.nickname,
-                avatarUrl=user.avatar_url,
+                avatarUrl=resolve_bos_read_url(user.avatar_url),
             ),
             msgType=msg.msg_type,
             **message_content_fields(msg.msg_type, msg.text_content, msg.image_url),
@@ -1154,7 +1155,7 @@ async def send_message(
             sender=ChatMessageSender(
                 userId=f"u_{current_user.id}",
                 nickname=current_user.nickname,
-                avatarUrl=current_user.avatar_url,
+                avatarUrl=resolve_bos_read_url(current_user.avatar_url),
             ),
             msgType=message.msg_type,
             **message_content_fields(message.msg_type, message.text_content, message.image_url),
@@ -1191,7 +1192,7 @@ def _chat_message_item(
         sender=ChatMessageSender(
             userId=f"u_{user.id}",
             nickname=user.nickname,
-            avatarUrl=user.avatar_url,
+            avatarUrl=resolve_bos_read_url(user.avatar_url),
         ),
         msgType=msg.msg_type,
         **message_content_fields(msg.msg_type, msg.text_content, msg.image_url),

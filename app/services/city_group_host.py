@@ -21,6 +21,7 @@ from app.services.city_hall import CITY_HALL_ACTIVITY_KIND, EVENT_ACTIVITY_KIND,
 from app.services.city_hall_region_catalog import load_static_prefecture_blocks
 from app.services.content_moderation import assert_text_content_safe
 from app.services.wechat_content_security import SCENE_SOCIAL
+from app.services.bos_storage import resolve_bos_read_url
 
 HOST_STATUS_ACTIVE = "active"
 HOST_STATUS_SUSPENDED = "suspended"
@@ -173,7 +174,7 @@ async def host_summary_from_row(host: CityGroupHost, user: User) -> dict:
     return {
         "userId": _uid_str(user.id),
         "nickname": user.nickname,
-        "avatarUrl": user.avatar_url,
+        "avatarUrl": resolve_bos_read_url(user.avatar_url),
         "role": host.role,
         "badgeLabel": host_badge_label(host.city_code, host.role),
     }

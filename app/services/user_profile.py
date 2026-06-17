@@ -9,6 +9,7 @@ from fastapi import HTTPException
 
 from app.models.user import User
 from app.schemas.auth import LoginUser
+from app.services.bos_storage import resolve_bos_read_url
 from app.schemas.datetime_iso import datetime_to_rfc3339_utc_z
 
 _AUTO_NICKNAME_RE = re.compile(r"^旅人.{1,28}$")
@@ -70,7 +71,7 @@ def build_login_user(user: User) -> LoginUser:
     return LoginUser(
         userId=f"u_{user.id}",
         nickname=user.nickname,
-        avatarUrl=user.avatar_url,
+        avatarUrl=resolve_bos_read_url(user.avatar_url),
         gender=g,
         status=user.status,
         birthDate=birth_date_for_api(user),

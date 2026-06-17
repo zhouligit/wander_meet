@@ -28,6 +28,7 @@ from app.schemas.common import APIResponse
 from app.schemas.datetime_iso import datetime_to_rfc3339_utc_z
 from app.services.admin_user_merge import admin_merge_users, admin_search_users
 from app.services.user_phone_bind import mask_user_phone, user_has_phone
+from app.services.bos_storage import resolve_bos_read_url
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -249,8 +250,8 @@ async def admin_list_photo_verifications(
             verificationId=f"pv_{pv.id}",
             userId=f"u_{pv.user_id}",
             nickname=user.nickname or "用户",
-            avatarUrl=user.avatar_url,
-            selfieUrl=pv.selfie_url,
+            avatarUrl=resolve_bos_read_url(user.avatar_url),
+            selfieUrl=resolve_bos_read_url(pv.selfie_url) or "",
             status=pv.status,
             submittedAt=pv.submitted_at,
         )
