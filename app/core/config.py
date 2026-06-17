@@ -144,9 +144,13 @@ class Settings(BaseSettings):
     bos_access_key_id: str = ""
     bos_secret_access_key: str = ""
     bos_bucket: str = ""
-    #: 如 https://bj.bcebos.com 或 https://bucket-name.bj.bcebos.com
+    #: SDK 写 BOS 用的 Endpoint。区域域名如 https://bd.bcebos.com；自定义域名须配合 bos_cname_enabled
     bos_endpoint: str = "https://bj.bcebos.com"
-    #: 公网访问根 URL（Bucket 域名或 CDN），如 https://your-bucket.bj.bcebos.com
+    #: Bucket 绑定自定义域名作 endpoint 时设为 true（见 BOS SDK cname_enabled）
+    bos_cname_enabled: bool = False
+    #: 自定义 endpoint 失败时 SDK 重试的备用域名，如 your-bucket.bd.bcebos.com（可选）
+    bos_backup_endpoint: str = ""
+    #: 公网访问根 URL（Bucket 域名、CDN 或自定义域名），如 https://your-bucket.cdn.bcebos.com
     bos_public_base_url: str = ""
     bos_avatar_max_bytes: int = 5 * 1024 * 1024
     bos_chat_image_max_bytes: int = 8 * 1024 * 1024

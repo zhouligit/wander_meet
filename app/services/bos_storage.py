@@ -53,18 +53,32 @@ def _require_bos(settings: Settings | None = None) -> Settings:
     return s
 
 
-@lru_cache(maxsize=1)
-def _bos_client():
+def build_bce_client_configuration(settings: Settings | None = None):
+    """构造 BOS SDK 配置（支持自定义域名 cname_enabled + backup_endpoint）。"""
     from baidubce.auth.bce_credentials import BceCredentials
     from baidubce.bce_client_configuration import BceClientConfiguration
+
+    s = _require_bos(settings)
+    kwargs: dict = {
+        "credentials": BceCredentials(
+            s.bos_access_key_id.strip(),
+            s.bos_secret_access_key.strip(),
+        ),
+        "endpoint": s.bos_endpoint.strip(),
+    }
+    if s.bos_cname_enabled:
+        kwargs["cname_enabled"] = True
+    backup = (s.bos_backup_endpoint or "").strip()
+    if backup:
+        kwargs["backup_endpoint"] = backup
+    return BceClientConfiguration(**kwargs)
+
+
+@lru_cache(maxsize=1)
+def _bos_client():
     from baidubce.services.bos.bos_client import BosClient
 
-    s = _require_bos()
-    config = BceClientConfiguration(
-        credentials=BceCredentials(s.bos_access_key_id.strip(), s.bos_secret_access_key.strip()),
-        endpoint=s.bos_endpoint.strip(),
-    )
-    return BosClient(config)
+    return BosClient(build_bce_client_configuration())
 
 
 def normalize_image_ext(

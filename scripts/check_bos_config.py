@@ -13,7 +13,7 @@ import sys
 def main() -> int:
     try:
         from app.core.config import get_settings
-        from app.services.bos_storage import bos_is_configured
+        from app.services.bos_storage import bos_is_configured, build_bce_client_configuration
     except ImportError:
         print("请在项目根目录、已激活 venv 后运行", file=sys.stderr)
         return 1
@@ -27,7 +27,11 @@ def main() -> int:
     print("=== BOS 配置检查 ===")
     print(f"已配置: {bos_is_configured(s)}")
     print(f"BOS_BUCKET          = {bucket or '(空)'}")
+    cname = bool(getattr(s, "bos_cname_enabled", False))
+    backup = (getattr(s, "bos_backup_endpoint", "") or "").strip()
     print(f"BOS_ENDPOINT        = {endpoint or '(空)'}")
+    print(f"BOS_CNAME_ENABLED   = {cname}")
+    print(f"BOS_BACKUP_ENDPOINT = {backup or '(空)'}")
     print(f"BOS_PUBLIC_BASE_URL = {public_base or '(空)'}")
     print(f"BOS_ACCESS_KEY_ID   = {ak[:6]}...{ak[-4:] if len(ak) > 10 else ''}" if ak else "BOS_ACCESS_KEY_ID   = (空)")
 
@@ -43,18 +47,19 @@ def main() -> int:
         print("\n❌ BOS_PUBLIC_BASE_URL 应以 https:// 开头")
         return 1
 
+    if endpoint and ".cdn.bcebos.com" in endpoint and not cname:
+        print(
+            "\n⚠️  BOS_ENDPOINT 像是 CDN/自定义域名，但未开启 BOS_CNAME_ENABLED=true，"
+            "上传可能报 SignatureDoesNotMatch"
+        )
+
     try:
-        from baidubce.auth.bce_credentials import BceCredentials
-        from baidubce.bce_client_configuration import BceClientConfiguration
         from baidubce.services.bos.bos_client import BosClient
     except ImportError:
         print("\n❌ 未安装 bce-python-sdk，请 pip install -r requirements.txt")
         return 1
 
-    cfg = BceClientConfiguration(
-        credentials=BceCredentials(s.bos_access_key_id.strip(), s.bos_secret_access_key.strip()),
-        endpoint=endpoint,
-    )
+    cfg = build_bce_client_configuration(s)
     client = BosClient(cfg)
 
     print("\n--- 当前 AK 可见的 Bucket 列表 ---")
@@ -82,7 +87,7 @@ def main() -> int:
             print(
                 "\n常见原因:\n"
                 "  1. BOS_BUCKET 名称与控制台不一致（区分大小写）\n"
-                "  2. BOS_ENDPOINT 区域不对（如 Bucket 在广州却填 bj.bcebos.com）\n"
+                "  2. BOS_ENDPOINT 区域不对，或自定义域名未开 BOS_CNAME_ENABLED=true\n"
                 "  3. AK/SK 属于另一个百度云账号\n"
                 "请到 控制台 → 对象存储 BOS → Bucket 列表 核对名称与区域。"
             )
