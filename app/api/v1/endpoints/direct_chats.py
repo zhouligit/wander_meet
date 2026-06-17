@@ -117,6 +117,17 @@ async def _assert_thread_accessible(
         raise HTTPException(status_code=403, detail="Friendship removed or blocked")
 
 
+async def _assert_can_send_direct_message(
+    db: AsyncSession, thread: DmThread, user_id: int
+) -> None:
+    await _assert_thread_member(thread, user_id)
+    peer = _peer_id(thread, user_id)
+    visible = await is_thread_visible_for_user(db, user_id, thread)
+    mutual = await are_dm_peers_mutually_connected(db, user_id, peer)
+    if not (visible and mutual):
+        raise HTTPException(status_code=403, detail=NOT_FRIENDS_MESSAGE)
+
+
 @router.post("/activities/{activity_id}/dm-requests")
 async def create_dm_request(
     activity_id: str,
