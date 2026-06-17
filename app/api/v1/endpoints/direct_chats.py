@@ -24,7 +24,7 @@ from app.services.content_moderation import (
 from app.services.user_profile import assert_user_profile_complete
 from app.services.wechat_content_security import SCENE_COMMENT, SCENE_PROFILE, SCENE_SOCIAL
 from app.services.chat_message_payload import build_message_row_content
-from app.services.chat_location import chat_last_message_preview
+from app.services.chat_location import chat_last_message_preview, message_content_fields
 from app.services.bos_storage import resolve_bos_read_url
 from app.services.dm_relationship import (
     NOT_FRIENDS_MESSAGE,
