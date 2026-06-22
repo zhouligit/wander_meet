@@ -33,6 +33,7 @@ htmlcov/
 .idea/
 .vscode/
 .cursor/
+.cursorignore
 *.swp
 *.swo
 

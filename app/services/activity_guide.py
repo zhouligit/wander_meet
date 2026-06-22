@@ -13,7 +13,6 @@ GUIDE_SECTION_KEYS = (
     "equipment",
     "enrollmentRequirements",
     "feeNote",
-    "registration",
     "risk",
     "environment",
 )
@@ -24,7 +23,6 @@ GUIDE_SECTION_LABELS: dict[str, str] = {
     "equipment": "装备要求",
     "enrollmentRequirements": "报名条件",
     "feeNote": "费用说明",
-    "registration": "报名方式",
     "risk": "风险提示",
     "environment": "补充说明",
 }
@@ -91,7 +89,6 @@ GUIDE_SECTION_PLACEHOLDERS: dict[str, str] = {
     "equipment": "必备 / 建议 / 禁止携带的装备清单。",
     "enrollmentRequirements": "年龄、经验、健康要求、需签署协议等。",
     "feeNote": "费用金额、包含/不含项目、退改政策等。",
-    "registration": "进群、联系微信、缴费方式等。",
     "risk": "天气、路况、人身风险及免责提示。",
     "environment": "无痕山野、垃圾带走等要求。",
 }
