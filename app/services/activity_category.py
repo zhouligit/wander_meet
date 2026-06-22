@@ -275,8 +275,6 @@ def normalize_activity_category(
     if label:
         raise HTTPException(status_code=400, detail="仅「其他」分类可填写活动主题")
     subs = _CATEGORY_BY_ID[cid].subcategories or []
-    if subs and not sid:
-        raise HTTPException(status_code=400, detail="请选择二级分类")
     if sid and sid not in {s.subCategoryId for s in subs}:
         # 同 id 一级下历史二级（如 outdoor/camping）仍允许更新旧活动
         legacy = _LEGACY_L1_SUBS.get(cid, {})

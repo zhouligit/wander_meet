@@ -50,10 +50,9 @@ class ActivityCategoryTests(unittest.TestCase):
         cid, sid, label = normalize_activity_category("outdoor", "picnic")
         self.assertEqual((cid, sid, label), ("outdoor", "picnic", None))
 
-    def test_create_requires_sub_for_l1(self) -> None:
-        with self.assertRaises(HTTPException) as ctx:
-            normalize_activity_category("dining", None)
-        self.assertIn("二级", str(ctx.exception.detail))
+    def test_create_allows_l1_without_sub(self) -> None:
+        cid, sid, label = normalize_activity_category("dining", None)
+        self.assertEqual((cid, sid, label), ("dining", None, None))
 
 
 if __name__ == "__main__":
