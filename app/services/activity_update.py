@@ -172,6 +172,7 @@ async def apply_activity_update(
         "maxMembers": "max_members",
         "feeType": "fee_type",
         "feeAmount": "fee_amount_cents",
+        "requireEnrollmentIdentity": "require_enrollment_identity",
     }
     for req_key, model_key in field_map.items():
         if req_key not in updates:

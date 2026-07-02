@@ -19,6 +19,13 @@ from app.services.activity_query import (
     to_utc_optional,
 )
 from app.services.activity_enroll import enroll_user_in_activity
+from app.services.enrollment_identity import (
+    apply_enrollment_identity,
+    build_my_enrollment,
+    can_edit_enrollment_identity,
+    member_identity_for_organizer,
+    normalize_enroll_identity_payload,
+)
 from app.services.activity_category import category_display_name, normalize_activity_category
 from app.services.city_hall import EVENT_ACTIVITY_KIND, is_city_hall_activity
 from app.services.city_group_host import (
@@ -87,12 +94,14 @@ from app.schemas.activity import (
     ChatMessagesData,
     ChatMessageSender,
     CreateActivityRequest,
+    EnrollActivityRequest,
     EnrollmentData,
     MyEnrollment,
     CancelActivityRequest,
     ChainSignupEntryRequest,
     SendMessageRequest,
     UpdateActivityRequest,
+    UpdateEnrollmentIdentityRequest,
 )
 from app.schemas.common import APIResponse
 from app.schemas.feed import FeedListData, FeedPostCreateData, FeedPostCreateRequest, FeedPostItem
@@ -527,7 +536,8 @@ async def _build_activity_detail_data(
         activityStatus=effective_activity_status(activity, now_utc),
         organizer=_organizer_for_detail(organizer),
         enrolledCount=int(enrolled_count or 0),
-        myEnrollment=MyEnrollment(status="joined") if my_enrollment_row else None,
+        myEnrollment=build_my_enrollment(my_enrollment_row, activity, now_utc),
+        requireEnrollmentIdentity=bool(activity.require_enrollment_identity),
         isOrganizer=current_user is not None and activity.organizer_id == current_user.id,
         **activity_image_fields_for_api(
             activity, current_user.id if current_user else None
@@ -567,10 +577,13 @@ async def get_activity_detail(
                     ),
                     "isOrganizer": optional_user is not None
                     and activity_row.organizer_id == optional_user.id,
+                    "requireEnrollmentIdentity": bool(
+                        activity_row.require_enrollment_identity
+                    ),
                 }
             )
         my_enrollment = None
-        if optional_user:
+        if optional_user and activity_row:
             my_enrollment_row = await db.scalar(
                 select(ActivityEnrollment).where(
                     ActivityEnrollment.activity_id == activity_pk,
@@ -579,7 +592,9 @@ async def get_activity_detail(
                 )
             )
             if my_enrollment_row:
-                my_enrollment = MyEnrollment(status="joined")
+                my_enrollment = build_my_enrollment(
+                    my_enrollment_row, activity_row, now_utc
+                )
         return APIResponse(
             data=cached_detail.model_copy(update={"myEnrollment": my_enrollment})
         )
@@ -669,10 +684,10 @@ async def create_activity(
         fee_type=payload.feeType,
         fee_amount_cents=payload.feeAmount,
         activity_status="published",
+        require_enrollment_identity=bool(payload.requireEnrollmentIdentity),
     )
     db.add(activity)
     await db.flush()
-    # 发布者默认占 1 席、已加入（与报名记录一致，便于人数与群聊权限）
     db.add(
         ActivityEnrollment(
             activity_id=activity.id,
@@ -708,6 +723,7 @@ async def create_activity(
 async def enroll_activity(
     request: Request,
     activity_id: str,
+    payload: EnrollActivityRequest | None = Body(default=None),
     db: AsyncSession = Depends(get_db_session),
     current_user: User = Depends(get_current_user),
 ) -> APIResponse[EnrollmentData]:
@@ -718,7 +734,15 @@ async def enroll_activity(
     assert_user_profile_complete(current_user)
     assert_user_phone_bound(current_user)
 
-    enrollment = await enroll_user_in_activity(db, current_user.id, activity)
+    body = payload or EnrollActivityRequest()
+    enrollment = await enroll_user_in_activity(
+        db,
+        current_user.id,
+        activity,
+        current_user,
+        participant_name=body.participantName,
+        id_card_number=body.idCardNumber,
+    )
     from app.services.growth_trust import grant_pending_referral_rewards, on_qualified_action
 
     action = "city_hall_join" if is_city_hall_activity(activity) else "event_enroll"
@@ -773,6 +797,51 @@ async def cancel_enrollment(
     )
     await invalidate_me_stats(current_user.id)
     return APIResponse(data={"status": "cancelled"})
+
+
+@router.patch("/{activity_id}/enrollments/me/identity")
+async def update_my_enrollment_identity(
+    activity_id: str,
+    payload: UpdateEnrollmentIdentityRequest,
+    db: AsyncSession = Depends(get_db_session),
+    current_user: User = Depends(get_current_user),
+) -> APIResponse[MyEnrollment]:
+    activity_pk = _parse_activity_id(activity_id)
+    activity = await db.scalar(select(Activity).where(Activity.id == activity_pk))
+    if not activity:
+        raise HTTPException(status_code=404, detail="Activity not found")
+    if not activity.require_enrollment_identity:
+        raise HTTPException(status_code=400, detail="该活动未开启实名报名")
+    assert_user_phone_bound(current_user)
+    now_utc = datetime.now(UTC)
+    if not can_edit_enrollment_identity(activity, now_utc):
+        raise HTTPException(status_code=400, detail="活动已开始，无法修改报名信息")
+
+    enrollment = await db.scalar(
+        select(ActivityEnrollment).where(
+            ActivityEnrollment.activity_id == activity_pk,
+            ActivityEnrollment.user_id == current_user.id,
+            ActivityEnrollment.status == "joined",
+        )
+    )
+    if not enrollment:
+        raise HTTPException(status_code=404, detail="Enrollment not found")
+
+    name, id_card = normalize_enroll_identity_payload(
+        payload.participantName,
+        payload.idCardNumber,
+        required=True,
+    )
+    apply_enrollment_identity(enrollment, current_user, name, id_card)
+    await db.commit()
+    await db.refresh(enrollment)
+    await invalidate_activity_read_caches(
+        city_code=activity.city_code, activity_id=activity.id
+    )
+    my_enrollment = build_my_enrollment(enrollment, activity, now_utc)
+    if my_enrollment is None:
+        raise HTTPException(status_code=500, detail="Enrollment state error")
+    return APIResponse(data=my_enrollment)
 
 
 @router.get("/{activity_id}/posts")
@@ -953,6 +1022,10 @@ async def activity_members(
     if activity.organizer_id != current_user.id and not is_member:
         raise HTTPException(status_code=403, detail="Only members can view")
 
+    show_identity = (
+        bool(activity.require_enrollment_identity)
+        and activity.organizer_id == current_user.id
+    )
     city_hall = is_city_hall_activity(activity)
     q_norm = (q or "").strip()
     member_stmt = (
@@ -979,6 +1052,7 @@ async def activity_members(
             avatarUrl=resolve_bos_read_url(u.avatar_url),
             role="member",
             joinedAt=en.created_at,
+            identity=member_identity_for_organizer(en, show=show_identity),
         )
         for en, u in members_query.all()
     ]

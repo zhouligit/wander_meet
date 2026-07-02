@@ -72,6 +72,7 @@ class CreateActivityRequest(BaseModel):
     feeAmount: int | None = None
     images: list[str] | None = Field(default=None, max_length=9)
     guideSections: dict[str, str] | None = None
+    requireEnrollmentIdentity: bool = False
 
 
 class ActivityGuideTemplateSection(BaseModel):
@@ -111,8 +112,32 @@ class ActivityDetailOrganizer(BaseModel):
     tags: list[str] = Field(default_factory=list)
 
 
+class MyEnrollmentIdentity(BaseModel):
+    participantName: str = ""
+    idCardMasked: str = ""
+    phoneMasked: str = ""
+    canEditIdentity: bool = False
+
+
 class MyEnrollment(BaseModel):
     status: str
+    identity: MyEnrollmentIdentity | None = None
+
+
+class EnrollmentIdentityPrefillData(BaseModel):
+    participantName: str = ""
+    idCardNumber: str = ""
+    phoneMasked: str = ""
+
+
+class EnrollActivityRequest(BaseModel):
+    participantName: str | None = Field(default=None, max_length=32)
+    idCardNumber: str | None = Field(default=None, max_length=18)
+
+
+class UpdateEnrollmentIdentityRequest(BaseModel):
+    participantName: str = Field(min_length=2, max_length=32)
+    idCardNumber: str = Field(min_length=18, max_length=18)
 
 
 class ActivityDetailData(BaseModel):
@@ -139,6 +164,7 @@ class ActivityDetailData(BaseModel):
     organizer: ActivityDetailOrganizer
     enrolledCount: int
     myEnrollment: MyEnrollment | None = None
+    requireEnrollmentIdentity: bool = False
     coverImageUrl: str | None = None
     images: list[str] | None = None
     imagesAuditStatus: str = "none"
@@ -175,10 +201,17 @@ class UpdateActivityRequest(BaseModel):
     feeAmount: int | None = None
     images: list[str] | None = Field(default=None, max_length=9)
     guideSections: dict[str, str] | None = None
+    requireEnrollmentIdentity: bool | None = None
 
 
 class CancelActivityRequest(BaseModel):
     reason: str | None = Field(default=None, max_length=512)
+
+
+class ActivityMemberIdentity(BaseModel):
+    participantName: str = ""
+    idCardMasked: str = ""
+    phoneMasked: str = ""
 
 
 class ActivityMemberItem(BaseModel):
@@ -187,6 +220,7 @@ class ActivityMemberItem(BaseModel):
     avatarUrl: str | None = None
     role: str
     joinedAt: datetime
+    identity: ActivityMemberIdentity | None = None
 
     @field_serializer("joinedAt")
     def _ser_joined_at(self, v: datetime) -> str:

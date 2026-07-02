@@ -14,6 +14,9 @@ class ActivityEnrollment(Base):
     activity_id: Mapped[int] = mapped_column(index=True)
     user_id: Mapped[int] = mapped_column(index=True)
     status: Mapped[str] = mapped_column(String(16), default="joined")
+    participant_name: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    id_card_number: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    participant_phone: Mapped[str | None] = mapped_column(String(20), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

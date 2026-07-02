@@ -47,21 +47,18 @@ def parse_birth_date(value: str) -> date:
 
 
 def profile_completion_errors(user: User) -> list[str]:
-    errs: list[str] = []
-    if is_auto_nickname(user.nickname):
-        errs.append("请填写昵称（系统默认昵称不可用）")
-    return errs
+    """产品不再强制自定义昵称；保留函数供 completeOnboarding 等调用。"""
+    return []
 
 
 def assert_user_profile_complete(user: User) -> None:
-    """报名、进群、发活动等需完整资料的操作前调用。"""
-    if not profile_is_complete(user):
-        raise HTTPException(status_code=403, detail=PROFILE_INCOMPLETE_DETAIL)
+    """兼容旧版前端：发活动/报名等不再因默认昵称「旅人xxxx」拦截。"""
+    return
 
 
 def profile_is_complete(user: User) -> bool:
-    """资料是否已满足门槛：有效昵称（非系统默认「旅人xxxx」）。"""
-    return not profile_completion_errors(user)
+    """GET /me、登录响应：始终视为资料可满足发活动等操作。"""
+    return True
 
 
 def build_login_user(user: User) -> LoginUser:

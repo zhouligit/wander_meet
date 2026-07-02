@@ -69,12 +69,14 @@ from app.schemas.place_activity import (
 from app.core.config import get_settings
 from app.core.security import create_access_token
 from app.schemas.auth import LoginUser
+from app.schemas.activity import EnrollmentIdentityPrefillData
 from app.schemas.phone_bind import BindPhoneData, BindPhoneSmsRequest, BindPhoneWechatRequest
 from app.services.auth_refresh import issue_refresh_token
 from app.services.phone_validation import parse_cn_mobile
 from app.services.email_auth import user_has_email_account
 from app.services.email_validation import mask_email
 from app.services.user_phone_bind import bind_phone_to_user, mask_user_phone, user_has_phone
+from app.services.enrollment_identity import enrollment_identity_prefill
 from app.services.user_profile_fields import bio_from_user, tags_from_user
 from app.services.user_profile import (
     birth_date_for_api,
@@ -217,6 +219,14 @@ async def get_me(current_user: User = Depends(get_current_user)) -> APIResponse[
     data = build_me_data(current_user)
     await set_cached_me_data(current_user.id, data)
     return APIResponse(data=_with_presigned_me_avatar(data))
+
+
+@router.get("/enrollment-identity")
+async def get_enrollment_identity_prefill(
+    current_user: User = Depends(get_current_user),
+) -> APIResponse[EnrollmentIdentityPrefillData]:
+    prefill = enrollment_identity_prefill(current_user)
+    return APIResponse(data=EnrollmentIdentityPrefillData(**prefill))
 
 
 @router.patch("")
