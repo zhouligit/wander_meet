@@ -131,4 +131,23 @@ def member_identity_for_organizer(
         participantName=enrollment.participant_name or "",
         idCardMasked=mask_id_card(enrollment.id_card_number or ""),
         phoneMasked=mask_phone_str(enrollment.participant_phone or ""),
+        idCardNumber=(enrollment.id_card_number or "").strip(),
+        phone=(enrollment.participant_phone or "").strip(),
+    )
+
+
+def enrollment_roster_item(
+    enrollment: ActivityEnrollment,
+) -> "EnrollmentRosterItem | None":
+    from app.schemas.activity import EnrollmentRosterItem
+
+    name = (enrollment.participant_name or "").strip()
+    id_card = (enrollment.id_card_number or "").strip()
+    phone = (enrollment.participant_phone or "").strip()
+    if not name or not id_card or not phone:
+        return None
+    return EnrollmentRosterItem(
+        participantName=name,
+        idCardNumber=id_card,
+        phone=phone,
     )

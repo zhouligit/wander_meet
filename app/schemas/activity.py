@@ -212,6 +212,9 @@ class ActivityMemberIdentity(BaseModel):
     participantName: str = ""
     idCardMasked: str = ""
     phoneMasked: str = ""
+    #: 仅发起人可见，用于购险等导出；普通成员接口不返回 identity
+    idCardNumber: str = ""
+    phone: str = ""
 
 
 class ActivityMemberItem(BaseModel):
@@ -229,6 +232,17 @@ class ActivityMemberItem(BaseModel):
 
 class ActivityMembersData(BaseModel):
     list: list[ActivityMemberItem]
+
+
+class EnrollmentRosterItem(BaseModel):
+    participantName: str
+    idCardNumber: str
+    phone: str
+
+
+class EnrollmentRosterData(BaseModel):
+    activityTitle: str = ""
+    list: list[EnrollmentRosterItem]
 
 
 class ChatMentionItem(BaseModel):

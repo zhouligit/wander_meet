@@ -23,6 +23,7 @@ from app.services.enrollment_identity import (
     apply_enrollment_identity,
     build_my_enrollment,
     can_edit_enrollment_identity,
+    enrollment_roster_item,
     member_identity_for_organizer,
     normalize_enroll_identity_payload,
 )
@@ -96,6 +97,7 @@ from app.schemas.activity import (
     CreateActivityRequest,
     EnrollActivityRequest,
     EnrollmentData,
+    EnrollmentRosterData,
     MyEnrollment,
     CancelActivityRequest,
     ChainSignupEntryRequest,
@@ -842,6 +844,41 @@ async def update_my_enrollment_identity(
     if my_enrollment is None:
         raise HTTPException(status_code=500, detail="Enrollment state error")
     return APIResponse(data=my_enrollment)
+
+
+@router.get("/{activity_id}/enrollments/roster")
+async def export_enrollment_roster(
+    activity_id: str,
+    db: AsyncSession = Depends(get_db_session),
+    current_user: User = Depends(get_current_user),
+) -> APIResponse[EnrollmentRosterData]:
+    """发起人导出完整报名名单（购险等），仅含未脱敏三要素。"""
+    activity_pk = _parse_activity_id(activity_id)
+    activity = await db.scalar(select(Activity).where(Activity.id == activity_pk))
+    if not activity:
+        raise HTTPException(status_code=404, detail="Activity not found")
+    if activity.organizer_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Only organizer can export roster")
+    if not activity.require_enrollment_identity:
+        raise HTTPException(status_code=400, detail="该活动未开启实名报名")
+
+    rows = await db.execute(
+        select(ActivityEnrollment)
+        .where(
+            ActivityEnrollment.activity_id == activity_pk,
+            ActivityEnrollment.status == "joined",
+            ActivityEnrollment.user_id != activity.organizer_id,
+        )
+        .order_by(ActivityEnrollment.created_at.asc())
+    )
+    roster: list = []
+    for en in rows.scalars().all():
+        item = enrollment_roster_item(en)
+        if item is not None:
+            roster.append(item)
+    return APIResponse(
+        data=EnrollmentRosterData(activityTitle=activity.title or "", list=roster)
+    )
 
 
 @router.get("/{activity_id}/posts")
