@@ -245,6 +245,14 @@ class EnrollmentRosterData(BaseModel):
     list: list[EnrollmentRosterItem]
 
 
+class ActivityShareQrcodeData(BaseModel):
+    activityId: str
+    title: str
+    scene: str
+    imageBase64: str
+    landingPage: str = "pages/home/home"
+
+
 class ChatMentionItem(BaseModel):
     userId: str
     nickname: str

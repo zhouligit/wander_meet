@@ -7,6 +7,7 @@ from sqlalchemy import Float, cast, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, get_optional_user
+from app.core.config import get_settings
 from app.services.user_profile_fields import bio_from_user, tags_from_user
 from app.services.activity_query import (
     HOME_ACTIVITY_WINDOW_DAYS,
@@ -18,6 +19,7 @@ from app.services.activity_query import (
     to_utc,
     to_utc_optional,
 )
+from app.services.activity_share_qrcode import get_activity_share_qrcode_base64
 from app.services.activity_enroll import enroll_user_in_activity
 from app.services.enrollment_identity import (
     apply_enrollment_identity,
@@ -98,6 +100,7 @@ from app.schemas.activity import (
     EnrollActivityRequest,
     EnrollmentData,
     EnrollmentRosterData,
+    ActivityShareQrcodeData,
     MyEnrollment,
     CancelActivityRequest,
     ChainSignupEntryRequest,
@@ -621,6 +624,37 @@ async def get_activity_detail(
         ),
     )
     return APIResponse(data=data)
+
+
+@router.get("/{activity_id}/share-qrcode")
+async def get_activity_share_qrcode(
+    activity_id: str,
+    db: AsyncSession = Depends(get_db_session),
+) -> APIResponse[ActivityShareQrcodeData]:
+    """活动详情分享：生成微信小程序码（扫码进入首页并置顶该活动）。"""
+    activity_pk = _parse_activity_id(activity_id)
+    activity = await db.scalar(select(Activity).where(Activity.id == activity_pk))
+    if not activity:
+        raise HTTPException(status_code=404, detail="Activity not found")
+    if is_city_hall_activity(activity):
+        raise HTTPException(status_code=400, detail="城市大群不支持活动分享码")
+    if activity.activity_kind != EVENT_ACTIVITY_KIND:
+        raise HTTPException(status_code=400, detail="仅普通活动可生成分享码")
+    if activity.activity_status == "cancelled":
+        raise HTTPException(status_code=400, detail="活动已取消，无法生成分享码")
+
+    scene, image_base64 = await get_activity_share_qrcode_base64(activity_pk)
+    settings = get_settings()
+    landing = (settings.wx_mp_share_qrcode_page or "pages/home/home").strip().lstrip("/")
+    return APIResponse(
+        data=ActivityShareQrcodeData(
+            activityId=f"act_{activity.id}",
+            title=(activity.title or "").strip(),
+            scene=scene,
+            imageBase64=image_base64,
+            landingPage=landing,
+        )
+    )
 
 
 @router.post("")

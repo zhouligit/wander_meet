@@ -170,6 +170,12 @@ class Settings(BaseSettings):
     wx_content_sec_enabled: bool = True
     #: 小程序「消息推送」Token（与 mp 后台开发设置里填写的 Token 一致，用于 URL 验签）
     wx_mp_message_token: str = ""
+    #: 活动分享小程序码落地页（不含前导 ``/``）
+    wx_mp_share_qrcode_page: str = "pages/home/home"
+    #: ``release`` | ``trial`` | ``develop``（与微信 getwxacodeunlimit env_version 一致）
+    wx_mp_env_version: str = "release"
+    #: 活动分享码 PNG base64 Redis 缓存 TTL（秒）
+    activity_share_qrcode_cache_ttl_seconds: int = 604800
 
     #: 抖音小程序 AppID / AppSecret（``auth/douyin/login`` 调 code2session）
     dy_mp_appid: str = ""
