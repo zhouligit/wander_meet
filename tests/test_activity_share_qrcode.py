@@ -8,9 +8,10 @@ from app.services.activity_share_qrcode import (
 
 class ActivityShareQrcodeTests(unittest.TestCase):
     def test_build_scene(self) -> None:
-        self.assertEqual(build_activity_share_scene(42), "id=42")
+        self.assertEqual(build_activity_share_scene(42), "42")
 
     def test_parse_scene(self) -> None:
+        self.assertEqual(parse_activity_share_scene("42"), 42)
         self.assertEqual(parse_activity_share_scene("id=42"), 42)
         self.assertEqual(parse_activity_share_scene("sa=42"), 42)
         self.assertEqual(parse_activity_share_scene("id%3D42"), 42)

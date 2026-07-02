@@ -30,7 +30,7 @@ _MP_TOKEN_INVALID_ERRCODES = frozenset({40001, 40014, 42001})
 def build_activity_share_scene(activity_id: int) -> str:
     if activity_id <= 0:
         raise ValueError("invalid activity id")
-    scene = f"{_ACTIVITY_SHARE_SCENE_PREFIX}{activity_id}"
+    scene = str(activity_id)
     if len(scene) > 32:
         raise HTTPException(status_code=400, detail="活动 ID 过长，无法生成分享码")
     return scene
@@ -53,6 +53,8 @@ def parse_activity_share_scene(scene_raw: str | None) -> int | None:
         if not tail.isdigit():
             return None
         return int(tail)
+    if scene.isdigit():
+        return int(scene)
     return None
 
 
@@ -63,7 +65,7 @@ def _cache_key(activity_id: int) -> str:
         settings.wx_mp_share_qrcode_page or _ACTIVITY_SHARE_QRCODE_DEFAULT_PAGE
     ).strip().lstrip("/")
     page_key = page.replace("/", ":")
-    return f"wm:act_share_qr:{activity_id}:{env}:{page_key}"
+    return f"wm:act_share_qr:{activity_id}:{env}:{page_key}:v2"
 
 
 async def _fetch_mock_qrcode_png(scene: str) -> bytes:
