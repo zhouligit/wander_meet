@@ -1,6 +1,6 @@
 # WanderMeet Backend (FastAPI)
 
-## 前端（旅聚小程序）
+## 前端（出门晃晃小程序）
 
 微信小程序 **uni-app** 工程与本仓库分离，本地常见路径为：
 
