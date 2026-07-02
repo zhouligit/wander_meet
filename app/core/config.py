@@ -171,7 +171,7 @@ class Settings(BaseSettings):
     #: 小程序「消息推送」Token（与 mp 后台开发设置里填写的 Token 一致，用于 URL 验签）
     wx_mp_message_token: str = ""
     #: 活动分享小程序码落地页（不含前导 ``/``）
-    wx_mp_share_qrcode_page: str = "pages/home/home"
+    wx_mp_share_qrcode_page: str = "pages/activity-detail/activity-detail"
     #: ``release`` | ``trial`` | ``develop``（与微信 getwxacodeunlimit env_version 一致）
     wx_mp_env_version: str = "release"
     #: 活动分享码 PNG base64 Redis 缓存 TTL（秒）

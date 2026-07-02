@@ -631,7 +631,7 @@ async def get_activity_share_qrcode(
     activity_id: str,
     db: AsyncSession = Depends(get_db_session),
 ) -> APIResponse[ActivityShareQrcodeData]:
-    """活动详情分享：生成微信小程序码（扫码进入首页并置顶该活动）。"""
+    """活动详情分享：生成微信小程序码（扫码进入活动详情页）。"""
     activity_pk = _parse_activity_id(activity_id)
     activity = await db.scalar(select(Activity).where(Activity.id == activity_pk))
     if not activity:
@@ -645,7 +645,9 @@ async def get_activity_share_qrcode(
 
     scene, image_base64 = await get_activity_share_qrcode_base64(activity_pk)
     settings = get_settings()
-    landing = (settings.wx_mp_share_qrcode_page or "pages/home/home").strip().lstrip("/")
+    landing = (
+        settings.wx_mp_share_qrcode_page or "pages/activity-detail/activity-detail"
+    ).strip().lstrip("/")
     return APIResponse(
         data=ActivityShareQrcodeData(
             activityId=f"act_{activity.id}",

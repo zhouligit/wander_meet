@@ -19,7 +19,10 @@ from app.services.wechat_miniapp import (
 
 logger = logging.getLogger(__name__)
 
-_ACTIVITY_SHARE_SCENE_PREFIX = "sa="
+_ACTIVITY_SHARE_SCENE_PREFIX = "id="
+_ACTIVITY_SHARE_SCENE_LEGACY_PREFIX = "sa="
+_ACTIVITY_SHARE_SCENE_PREFIXES = (_ACTIVITY_SHARE_SCENE_PREFIX, _ACTIVITY_SHARE_SCENE_LEGACY_PREFIX)
+_ACTIVITY_SHARE_QRCODE_DEFAULT_PAGE = "pages/activity-detail/activity-detail"
 _UNLIMITED_QRCODE_URL = "https://api.weixin.qq.com/wxa/getwxacodeunlimit"
 _MP_TOKEN_INVALID_ERRCODES = frozenset({40001, 40014, 42001})
 
@@ -43,18 +46,24 @@ def parse_activity_share_scene(scene_raw: str | None) -> int | None:
         scene = unquote(scene)
     except Exception:
         pass
-    if not scene.startswith(_ACTIVITY_SHARE_SCENE_PREFIX):
-        return None
-    tail = scene[len(_ACTIVITY_SHARE_SCENE_PREFIX) :].strip()
-    if not tail.isdigit():
-        return None
-    return int(tail)
+    for prefix in _ACTIVITY_SHARE_SCENE_PREFIXES:
+        if not scene.startswith(prefix):
+            continue
+        tail = scene[len(prefix) :].strip()
+        if not tail.isdigit():
+            return None
+        return int(tail)
+    return None
 
 
 def _cache_key(activity_id: int) -> str:
     settings = get_settings()
     env = (settings.wx_mp_env_version or "release").strip()
-    return f"wm:act_share_qr:{activity_id}:{env}"
+    page = (
+        settings.wx_mp_share_qrcode_page or _ACTIVITY_SHARE_QRCODE_DEFAULT_PAGE
+    ).strip().lstrip("/")
+    page_key = page.replace("/", ":")
+    return f"wm:act_share_qr:{activity_id}:{env}:{page_key}"
 
 
 async def _fetch_mock_qrcode_png(scene: str) -> bytes:
@@ -129,7 +138,9 @@ async def get_activity_share_qrcode_base64(activity_id: int) -> tuple[str, str]:
     """返回 ``(scene, image_base64)``；Redis 缓存 PNG。"""
     settings = get_settings()
     scene = build_activity_share_scene(activity_id)
-    page = (settings.wx_mp_share_qrcode_page or "pages/home/home").strip().lstrip("/")
+    page = (
+        settings.wx_mp_share_qrcode_page or _ACTIVITY_SHARE_QRCODE_DEFAULT_PAGE
+    ).strip().lstrip("/")
 
     cache_key = _cache_key(activity_id)
     cached = await redis_client.get(cache_key)

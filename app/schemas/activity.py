@@ -250,7 +250,7 @@ class ActivityShareQrcodeData(BaseModel):
     title: str
     scene: str
     imageBase64: str
-    landingPage: str = "pages/home/home"
+    landingPage: str = "pages/activity-detail/activity-detail"
 
 
 class ChatMentionItem(BaseModel):
