@@ -150,6 +150,43 @@ async def admin_handle_report(
     report.handled_action = action
     report.handler_admin_id = admin_user.id
     report.handled_at = datetime.now(UTC)
+    
+    # 信誉分变动
+    from app.services.trust_score import record_trust_score_change
+    
+    if action == "confirm":
+        # 举报确认：举报人信誉分 +30
+        await record_trust_score_change(
+            db=db,
+            user_id=report.reporter_id,
+            change=30,
+            reason="report_confirmed",
+            reason_detail="有效举报",
+            ref_type="report",
+            ref_id=report.id,
+        )
+        # P12: 举报确认 → 举报人积分+10
+        from app.services.linkage_service import on_valid_report
+        await on_valid_report(db, report.reporter_id, report.id)
+        # 举报确认：被举报人信誉分 -80（违规）
+        if report.target_type == "user" and report.target_id:
+            try:
+                reported_uid = int(report.target_id)
+                await record_trust_score_change(
+                    db=db,
+                    user_id=reported_uid,
+                    change=-80,
+                    reason="violation",
+                    reason_detail="违规行为被举报",
+                    ref_type="report",
+                    ref_id=report.id,
+                )
+            except ValueError:
+                pass
+    elif action == "dismiss":
+        # 举报驳回：无信誉分变动
+        pass
+    
     await db.commit()
     return APIResponse(data={"status": "handled"})
 

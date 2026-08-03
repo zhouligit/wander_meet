@@ -175,6 +175,29 @@ async def create_feed_post_comment(
     current_user: User = Depends(get_current_user),
 ) -> APIResponse[FeedCommentCreateData]:
     row = await add_comment(db, current_user, _parse_post_id(post_id), payload.content)
+    
+    # T2: 发布首条评论 → 晃晃币+5
+    from app.services.wander_coin_service import grant_coins
+    from sqlalchemy import select, func
+    from app.models.feed import PostComment
+    
+    # 检查是否是首条评论
+    comment_count = await db.execute(
+        select(func.count(PostComment.id)).where(
+            PostComment.user_id == current_user.id
+        )
+    )
+    if comment_count.scalar() == 1:  # 刚添加的是第一条
+        await grant_coins(
+            db=db,
+            user_id=current_user.id,
+            amount=5,
+            tx_type="newbie_task",
+            ref_type="task",
+            ref_id=2,  # T2
+            remark="新人任务T2: 发布首条评论",
+        )
+    
     return APIResponse(data=FeedCommentCreateData(commentId=f"pcom_{row.id}"))
 
 

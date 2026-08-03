@@ -6,6 +6,7 @@ from app.api.v1.endpoints.auth import router as auth_router
 from app.api.v1.endpoints.blocks import router as blocks_router
 from app.api.v1.endpoints.city_groups import admin_router as city_group_hosts_admin_router
 from app.api.v1.endpoints.city_groups import router as city_groups_router
+from app.api.v1.endpoints.trust_level import router as trust_level_router
 from app.api.v1.endpoints.direct_chats import router as direct_chats_router
 from app.api.v1.endpoints.health import router as health_router
 from app.api.v1.endpoints.me import router as me_router
@@ -17,7 +18,10 @@ from app.api.v1.endpoints.users import router as users_router
 from app.api.v1.endpoints.verification import router as verification_router
 from app.api.v1.endpoints.content_security import router as content_security_router
 from app.api.v1.endpoints.feed import router as feed_router
+from app.api.v1.endpoints.appeal import admin_router as appeal_admin_router, router as appeal_router
 from app.api.v1.endpoints.webhooks_wechat import router as webhooks_wechat_router
+from app.api.v1.endpoints.wander_coin import router as wander_coin_router
+from app.api.v1.endpoints.wander_coin_spend import router as wander_coin_spend_router
 from app.api.v1.endpoints.growth_trust import (
     act_router as growth_trust_act_router,
     content_router as growth_trust_content_router,
@@ -46,4 +50,9 @@ api_router.include_router(growth_trust_content_router)
 api_router.include_router(feed_router)
 api_router.include_router(content_security_router)
 api_router.include_router(webhooks_wechat_router)
+api_router.include_router(appeal_router)
+api_router.include_router(appeal_admin_router)
+api_router.include_router(wander_coin_router)
+api_router.include_router(wander_coin_spend_router)
+api_router.include_router(trust_level_router)
 

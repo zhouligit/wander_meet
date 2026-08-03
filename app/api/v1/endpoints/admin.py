@@ -126,6 +126,19 @@ async def admin_ban_user(
     if not user:
         return APIResponse(code=404, message="user not found", data={"status": "not_found"})
     user.status = "banned"
+    
+    # 违规封禁：信誉分 -100
+    from app.services.trust_score import record_trust_score_change
+    await record_trust_score_change(
+        db=db,
+        user_id=uid,
+        change=-100,
+        reason="violation",
+        reason_detail=f"管理员封禁：{reason}",
+        ref_type="admin_ban",
+        ref_id=uid,
+    )
+    
     await db.commit()
     await invalidate_user_cache(uid)
     return APIResponse(data={"userId": f"u_{uid}", "status": "banned"})

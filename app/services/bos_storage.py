@@ -1,7 +1,6 @@
 """百度 BOS 对象存储（头像、聊天图片等用户资源）。"""
 from __future__ import annotations
 
-import imghdr
 import logging
 import re
 import time
@@ -337,12 +336,12 @@ def validate_stored_chat_image_url(
 
 
 def sniff_image_content_type(data: bytes) -> str | None:
-    kind = imghdr.what(None, h=data[:512])
-    if kind == "jpeg":
-        return "image/jpeg"
-    if kind == "png":
+    """通过魔数检测图片类型，替代已移除的 imghdr 模块"""
+    if data[:8] == b'\x89PNG\r\n\x1a\n':
         return "image/png"
-    if kind == "webp":
+    if data[:2] == b'\xff\xd8':
+        return "image/jpeg"
+    if data[:4] == b'RIFF' and data[8:12] == b'WEBP':
         return "image/webp"
     return None
 

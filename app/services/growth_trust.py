@@ -310,6 +310,9 @@ async def grant_inviter_rewards_for_qualified_count(
     if qualified_count in REFERRAL_TIERS:
         tp = await get_or_create_trust_profile(db, inviter_id)
         tp.trust_score = min(1000, tp.trust_score + 20)
+        # 三体系联动：邀请好友达成阶梯奖励
+        from app.services.linkage_service import on_referral_register
+        await on_referral_register(db, inviter_id, None)  # 阶梯奖励不需要具体 invitee_id
         await db.flush()
 
 
@@ -361,6 +364,10 @@ async def on_qualified_action(db: AsyncSession, user_id: int, action: str) -> No
     await grant_badge(db, user_id, "newcomer")
     tp = await get_or_create_trust_profile(db, user_id)
     tp.trust_score = min(1000, tp.trust_score + 20)
+    # 三体系联动：邀请好友注册（被邀请人首次达标，给邀请人奖励）
+    if binding.inviter_id:
+        from app.services.linkage_service import on_referral_register
+        await on_referral_register(db, binding.inviter_id, user_id)
     user = await db.scalar(select(User).where(User.id == user_id))
     if user:
         await sync_trust_level(db, user)
@@ -434,6 +441,28 @@ async def process_successful_meet_pair(
         prev = tp.meet_count
         tp.meet_count += 1
         tp.trust_score = min(1000, tp.trust_score + 30)
+        # 信誉分变动记录
+        from app.services.trust_score import record_trust_score_change
+        await record_trust_score_change(
+            db=db,
+            user_id=uid,
+            change=30,
+            reason="meet_success",
+            reason_detail="见面成功",
+            ref_type="activity_meet",
+            ref_id=activity_id,
+        )
+        # 积分奖励：见面成功
+        from app.services.user_level import add_points
+        await add_points(
+            db=db,
+            user_id=uid,
+            points=20,
+            reason="meet_success",
+            reason_detail="见面成功",
+            ref_type="activity_meet",
+            ref_id=activity_id,
+        )
         user = await db.scalar(select(User).where(User.id == uid))
         if user:
             await sync_trust_level(db, user)
@@ -496,6 +525,28 @@ async def approve_photo_verification(
     tp = await get_or_create_trust_profile(db, row.user_id)
     tp.photo_verified = True
     tp.trust_score = min(1000, tp.trust_score + 150)
+    # 信誉分变动记录
+    from app.services.trust_score import record_trust_score_change
+    await record_trust_score_change(
+        db=db,
+        user_id=row.user_id,
+        change=150,
+        reason="photo_verify",
+        reason_detail="照片验证通过",
+        ref_type="photo_verification",
+        ref_id=row.id,
+    )
+    # 积分奖励：照片验证
+    from app.services.user_level import add_points
+    await add_points(
+        db=db,
+        user_id=row.user_id,
+        points=50,
+        reason="photo_verify",
+        reason_detail="照片验证通过",
+        ref_type="photo_verification",
+        ref_id=row.id,
+    )
     user = await db.scalar(select(User).where(User.id == row.user_id))
     if user:
         await sync_trust_level(db, user)
