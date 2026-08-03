@@ -84,6 +84,8 @@ CREATE TABLE activities (
     images_audit_updated_at     DATETIME        NULL,
     guide_sections              JSON            NULL     COMMENT '活动说明页章节',
     require_enrollment_identity BOOL            NOT NULL DEFAULT 0,
+    is_pinned                   BOOL            NOT NULL DEFAULT 0 COMMENT '是否置顶',
+    pinned_until                DATETIME        NULL     COMMENT '置顶截止时间',
     created_at                  DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at                  DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY (id),
