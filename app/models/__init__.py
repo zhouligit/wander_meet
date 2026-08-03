@@ -34,6 +34,9 @@ from app.models.growth_trust import (
     UserSafetyAck,
     UserTrustProfile,
 )
+from app.models.trust_level import PointRecord, TrustScoreRecord, UserLevel
+from app.models.wander_coin import WanderCoinTransaction, WanderCoinWallet
+from app.models.appeal import PointAppeal, TrustScoreAppeal
 
 __all__ = [
     "User",
@@ -71,5 +74,12 @@ __all__ = [
     "CityGroupHostAction",
     "CityGroupMute",
     "CityGroupHostApplication",
+    "PointRecord",
+    "TrustScoreRecord",
+    "UserLevel",
+    "WanderCoinWallet",
+    "WanderCoinTransaction",
+    "TrustScoreAppeal",
+    "PointAppeal",
 ]
 

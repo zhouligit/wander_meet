@@ -209,7 +209,15 @@ async def my_stats(
 
 
 @router.get("")
-async def get_me(current_user: User = Depends(get_current_user)) -> APIResponse[MeData]:
+async def get_me(
+    db: AsyncSession = Depends(get_db_session),
+    current_user: User = Depends(get_current_user),
+) -> APIResponse[MeData]:
+    # 每日登录积分检查
+    from app.services.user_level import check_daily_login_bonus
+    await check_daily_login_bonus(db, current_user.id)
+    await db.commit()
+    
     is_admin = (current_user.role or "").strip() == "admin"
     cached = await get_cached_me_data(current_user.id)
     if cached is not None:
@@ -313,6 +321,11 @@ async def update_me(
         if errors:
             raise HTTPException(status_code=400, detail="；".join(errors))
         user.onboarding_completed_at = datetime.now(UTC)
+        
+        # T1: 完善个人资料（头像+昵称+bio）→ 信誉分+30, 晃晃币+10
+        if user.avatar_url and user.nickname and user.bio:
+            from app.services.newbie_task_service import grant_task_reward
+            await grant_task_reward(db, user.id, 1)  # T1
     try:
         await db.commit()
     except OperationalError as exc:

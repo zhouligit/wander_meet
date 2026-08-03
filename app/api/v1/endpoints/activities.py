@@ -737,6 +737,31 @@ async def create_activity(
         await apply_activity_images(db, activity, current_user, payload.images)
     if payload.guideSections is not None:
         await apply_activity_guide_sections(activity, current_user, payload.guideSections)
+    
+    # 三体系联动：发布活动奖励
+    from app.services.linkage_service import on_activity_publish
+    await on_activity_publish(db, current_user.id, activity.id)
+    
+    # T5: 发布首个出游活动 → 晃晃币+100
+    from app.services.wander_coin_service import grant_coins
+    
+    # 检查是否是首个活动
+    activity_count = await db.execute(
+        select(func.count(Activity.id)).where(
+            Activity.organizer_id == current_user.id
+        )
+    )
+    if activity_count.scalar() == 1:  # 刚创建的是第一个
+        await grant_coins(
+            db=db,
+            user_id=current_user.id,
+            amount=100,
+            tx_type="newbie_task",
+            ref_type="task",
+            ref_id=5,  # T5
+            remark="新人任务T5: 发布首个出游活动",
+        )
+    
     await db.commit()
     await db.refresh(activity)
     await invalidate_activity_read_caches(
@@ -786,6 +811,34 @@ async def enroll_activity(
     action = "city_hall_join" if is_city_hall_activity(activity) else "event_enroll"
     await on_qualified_action(db, current_user.id, action)
     await grant_pending_referral_rewards(db)
+    
+    # 三体系联动：报名活动奖励
+    from app.services.linkage_service import on_activity_join
+    await on_activity_join(db, current_user.id, activity.id)
+    
+    # T3: 报名首个出游活动 → 晃晃币+50
+    from app.services.wander_coin_service import grant_coins
+    
+    # 检查是否是首个报名（排除自己组织的活动）
+    enrollment_count = await db.execute(
+        select(func.count(ActivityEnrollment.id))
+        .join(Activity)
+        .where(
+            ActivityEnrollment.user_id == current_user.id,
+            Activity.organizer_id != current_user.id,  # 排除自己组织的
+        )
+    )
+    if enrollment_count.scalar() == 1:  # 刚报名的是第一个
+        await grant_coins(
+            db=db,
+            user_id=current_user.id,
+            amount=50,
+            tx_type="newbie_task",
+            ref_type="task",
+            ref_id=3,  # T3
+            remark="新人任务T3: 报名首个出游活动",
+        )
+    
     await invalidate_activity_read_caches(
         city_code=activity.city_code, activity_id=activity.id
     )

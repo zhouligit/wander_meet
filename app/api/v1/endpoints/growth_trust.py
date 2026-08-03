@@ -359,6 +359,33 @@ async def checkin_activity(
     )
     db.add(row)
     await db.commit()
+
+    # 三体系联动：活动打卡奖励（晃晃币+15, 信誉分+10, 积分+15）
+    from app.services.linkage_service import on_activity_checkin
+    await on_activity_checkin(db, current_user.id, aid)
+
+    # P4: 好友首次参加活动 → 邀请人 晃晃币+20, 信誉分+15, 积分+20
+    from app.models.growth_trust import ReferralBinding
+    binding = await db.scalar(
+        select(ReferralBinding).where(
+            ReferralBinding.invitee_id == current_user.id,
+            ReferralBinding.status == "qualified",
+        )
+    )
+    if binding:
+        # 检查是否是该被邀请人的首次打卡（之前没有打卡记录）
+        prior_checkins = await db.scalar(
+            select(func.count(ActivityCheckin.id)).where(
+                ActivityCheckin.user_id == current_user.id,
+                ActivityCheckin.id != row.id,
+            )
+        )
+        if (prior_checkins or 0) == 0:
+            from app.services.linkage_service import on_referral_first_join
+            await on_referral_first_join(db, binding.inviter_id, current_user.id, aid)
+
+    await db.commit()
+
     return APIResponse(
         data=CheckinData(activityId=f"act_{aid}", checkedInAt=now)
     )
@@ -472,8 +499,32 @@ async def submit_meet_review(
         )
     )
     await db.commit()
+    
     if payload.met:
+        # 好评：双方见面成功处理
         await process_successful_meet_pair(db, aid, current_user.id, to_uid)
+        
+        # 三体系联动：活动获好评（评价人）→ 积分+2
+        from app.services.linkage_service import on_activity_good_review
+        await on_activity_good_review(db, current_user.id, aid)
+        
+        # 三体系联动：被好评（被评价人）→ 信誉分+20, 积分+5
+        await on_activity_good_review(db, to_uid, aid)
+        await db.commit()
+    else:
+        # 差评：被评价人信誉分 -15
+        from app.services.trust_score import record_trust_score_change
+        await record_trust_score_change(
+            db=db,
+            user_id=to_uid,
+            change=-15,
+            reason="meet_review_bad",
+            reason_detail="收到差评",
+            ref_type="activity_meet_review",
+            ref_id=aid,
+        )
+        await db.commit()
+    
     return APIResponse(data={"ok": True})
 
 

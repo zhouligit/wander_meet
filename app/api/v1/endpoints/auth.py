@@ -24,6 +24,7 @@ from app.services.acquisition_source import resolve_new_user_acquisition_source
 from app.services.aliyun_sms import AliyunSmsError, send_sms_aliyun_sync
 from app.services.ihuyi_sms import IhuiSmsError, send_sms_submit_sync
 from app.services.ip_rate_limit import enforce_auth_ip_rate_limit
+from app.services.phone_validation import parse_cn_mobile
 from app.services.user_profile import build_login_user
 from app.services.email_auth import (
     authenticate_email_user,
@@ -262,6 +263,12 @@ async def sms_login(
         await db.commit()
 
     _ensure_user_can_login(user)
+    
+    # 发放每日登录积分
+    from app.services.user_level import check_daily_login_bonus
+    await check_daily_login_bonus(db, user.id)
+    await db.commit()
+    
     return APIResponse(data=await _build_login_response(user))
 
 
@@ -286,6 +293,12 @@ async def email_login(
 ) -> APIResponse[SMSLoginData]:
     """H5 邮箱密码登录。"""
     user = await authenticate_email_user(db, email=payload.email, password=payload.password)
+    
+    # 发放每日登录积分
+    from app.services.user_level import check_daily_login_bonus
+    await check_daily_login_bonus(db, user.id)
+    await db.commit()
+    
     return APIResponse(data=await _build_login_response(user))
 
 
@@ -351,6 +364,12 @@ async def wechat_login(
             await db.commit()
 
     _ensure_user_can_login(user)
+    
+    # 发放每日登录积分
+    from app.services.user_level import check_daily_login_bonus
+    await check_daily_login_bonus(db, user.id)
+    await db.commit()
+    
     return APIResponse(data=await _build_login_response(user))
 
 
@@ -386,6 +405,12 @@ async def douyin_login(
         await db.commit()
 
     _ensure_user_can_login(user)
+    
+    # 发放每日登录积分
+    from app.services.user_level import check_daily_login_bonus
+    await check_daily_login_bonus(db, user.id)
+    await db.commit()
+    
     return APIResponse(data=await _build_login_response(user))
 
 

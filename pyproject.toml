@@ -1,0 +1,25 @@
+[project]
+name = "wander-meet"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "fastapi",
+    "python-multipart",
+    "uvicorn[standard]",
+    "sqlalchemy>=2.0",
+    "asyncmy",
+    "redis>=5.0",
+    "pydantic-settings",
+    "python-dotenv",
+    "httpx",
+    "alembic",
+    "pymysql",
+    "PyJWT",
+    "bcrypt>=4.0",
+    "cryptography",
+    "alibabacloud-dysmsapi20170525>=4.2.0,<5",
+    "bce-python-sdk>=0.9.46",
+    "greenlet>=3.5.4",
+]

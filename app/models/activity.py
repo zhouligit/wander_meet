@@ -50,6 +50,9 @@ class Activity(Base):
     require_enrollment_identity: Mapped[bool] = mapped_column(
         Boolean(), default=False, server_default="0"
     )
+    # 置顶相关字段
+    is_pinned: Mapped[bool] = mapped_column(Boolean(), default=False, server_default="0", index=True)
+    pinned_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

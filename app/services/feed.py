@@ -519,6 +519,12 @@ async def add_comment(
     post.comment_count = (post.comment_count or 0) + 1
     await db.commit()
     await db.refresh(row)
+
+    # P5: 发布评论 → 积分+3
+    from app.services.linkage_service import on_post_comment
+    await on_post_comment(db, user.id, post_id, row.id)
+    await db.commit()
+
     return row
 
 
