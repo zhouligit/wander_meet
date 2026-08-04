@@ -79,13 +79,13 @@ async def grant_coins(
     - 自动创建钱包（如果不存在）
     - 记录交易流水
     """
-    # 幂等校验：同一 ref_type + ref_id 不重复发放
+    # 幂等校验：同一 user_id + ref_type + ref_id 不重复发放
     if ref_type and ref_id is not None:
-        existing = await _check_idempotency(db, ref_type, ref_id)
+        existing = await _check_idempotency(db, user_id, ref_type, ref_id)
         if existing:
             logger.info(
-                "晃晃币幂等拦截: ref_type=%s ref_id=%s 已存在 tx_id=%s",
-                ref_type, ref_id, existing.id,
+                "晃晃币幂等拦截: user_id=%s ref_type=%s ref_id=%s 已存在 tx_id=%s",
+                user_id, ref_type, ref_id, existing.id,
             )
             return existing
 
