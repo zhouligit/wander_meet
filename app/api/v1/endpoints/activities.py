@@ -1098,6 +1098,10 @@ async def cancel_activity(
     if reason:
         activity.description = f"{activity.description}\n\n[取消原因] {reason}"
 
+    # 活动取消时扣除相关奖励（创建人 + 参与人 + 打卡人）
+    from app.services.activity_cancel_service import revoke_activity_rewards
+    revoke_stats = await revoke_activity_rewards(db, activity, reason)
+
     notice = "【活动取消】发起人已取消本次活动"
     if reason:
         notice += f"\n原因：{reason}"
