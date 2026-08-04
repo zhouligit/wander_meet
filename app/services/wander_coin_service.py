@@ -44,15 +44,16 @@ async def get_or_create_wallet(
 
 
 async def _check_idempotency(
-    db: AsyncSession, ref_type: str, ref_id: int
+    db: AsyncSession, user_id: int, ref_type: str, ref_id: int
 ) -> WanderCoinTransaction | None:
-    """基于 ref_type + ref_id 检查是否已存在交易记录（幂等校验）。
+    """基于 user_id + ref_type + ref_id 检查是否已存在交易记录（幂等校验）。
 
     返回已存在的交易记录（表示重复请求），或 None（表示首次请求）。
     """
     result = await db.execute(
         select(WanderCoinTransaction).where(
             and_(
+                WanderCoinTransaction.user_id == user_id,
                 WanderCoinTransaction.ref_type == ref_type,
                 WanderCoinTransaction.ref_id == ref_id,
             )

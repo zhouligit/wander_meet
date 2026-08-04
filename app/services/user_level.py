@@ -44,10 +44,11 @@ async def add_points(
     ref_id: Optional[int] = None,
 ) -> PointRecord:
     """增加用户积分"""
-    # 幂等性检查：防止重复发放
+    # 幂等性检查：防止重复发放（必须包含 user_id）
     if ref_type and ref_id is not None:
         existing = await db.scalar(
             select(PointRecord).where(
+                PointRecord.user_id == user_id,
                 PointRecord.ref_type == ref_type,
                 PointRecord.ref_id == ref_id,
                 PointRecord.reason == reason,
@@ -55,7 +56,7 @@ async def add_points(
         )
         if existing:
             logger.info(
-                f"积分幂等拦截: ref_type={ref_type}, ref_id={ref_id}, reason={reason}, "
+                f"积分幂等拦截: user_id={user_id}, ref_type={ref_type}, ref_id={ref_id}, reason={reason}, "
                 f"已存在 record_id={existing.id}"
             )
             return existing

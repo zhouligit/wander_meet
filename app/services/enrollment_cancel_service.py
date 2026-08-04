@@ -117,9 +117,32 @@ async def revoke_enrollment_rewards(
         await db.flush()
         stats["points"] = 5
         
+        # 4. 删除原始的报名奖励记录，允许重新报名时再次获得奖励
+        from sqlalchemy import delete
+        
+        # 删除原始晃晃币发放记录
+        await db.execute(
+            delete(WanderCoinTransaction).where(
+                WanderCoinTransaction.user_id == user_id,
+                WanderCoinTransaction.ref_type == "activity",
+                WanderCoinTransaction.ref_id == activity.id,
+                WanderCoinTransaction.tx_type == "activity_reward",
+            )
+        )
+        
+        # 删除原始积分发放记录
+        await db.execute(
+            delete(PointRecord).where(
+                PointRecord.user_id == user_id,
+                PointRecord.ref_type == "activity",
+                PointRecord.ref_id == activity.id,
+                PointRecord.reason == "join_activity",
+            )
+        )
+        
         logger.info(
             f"用户 {user_id} 退出活动 {activity.id}，扣除奖励: "
-            f"晃晃币-{stats['coins']}, 积分-{stats['points']}"
+            f"晃晃币-{stats['coins']}, 积分-{stats['points']}，已删除原始报名记录"
         )
         
     except Exception as e:
