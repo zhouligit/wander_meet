@@ -1,27 +1,34 @@
 """
-退出活动时的奖励扣除服务
+报名奖励发放 / 退出扣除
 
-支持多轮「报名 → 取消 → 再报名」：
-- 以「是否仍存在未扣回的报名发放流水」作为是否扣除的依据
-- 不再用「该活动是否曾有过取消扣除流水」做终身幂等（否则第二轮起会漏扣白嫖）
+多轮「报名 → 取消 → 再报名」：
+- 保留全部流水（不删发放记录），交易/积分列表成对可见
+- 用「净未扣回余额」决定是否发放或扣除，防白嫖与连点重复扣
+- 每轮发放使用独立 ref_id（activity_id * 1e6 + round），避开 grant 幂等键冲突
 """
+from __future__ import annotations
+
 import logging
 
-from sqlalchemy import and_, delete, or_, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.activity import Activity
-from app.models.trust_level import PointRecord, UserLevel
+from app.models.trust_level import PointRecord
 from app.models.wander_coin import WanderCoinTransaction
-from app.services.wander_coin_service import get_or_create_wallet
+from app.services.user_level import add_points, get_or_create_user_level
+from app.services.wander_coin_service import get_or_create_wallet, grant_coins
 
 logger = logging.getLogger(__name__)
 
-# 与 linkage_service.on_activity_join 保持一致
+JOIN_REWARD_AMOUNT = 5
+JOIN_REF_MULTIPLIER = 1_000_000
+
 JOIN_COIN_TX_TYPE = "activity_reward"
 JOIN_COIN_REF_TYPE = "activity_join"
 JOIN_COIN_REF_TYPE_LEGACY = "activity"
 JOIN_COIN_REMARK = "报名活动奖励"
+
 JOIN_POINT_REASON = "join_activity"
 JOIN_POINT_DETAIL = "报名活动"
 JOIN_POINT_REF_TYPE = "activity_join"
@@ -32,45 +39,219 @@ CANCEL_COIN_REF_TYPE = "enrollment_cancel"
 CANCEL_POINT_REASON = "enrollment_cancel_deduct"
 
 
-async def _find_active_join_coin_grants(
-    db: AsyncSession, user_id: int, activity_id: int
-) -> list[WanderCoinTransaction]:
-    """查找尚未扣回的报名晃晃币发放流水（含历史 ref_type=activity）。"""
-    result = await db.execute(
-        select(WanderCoinTransaction).where(
-            WanderCoinTransaction.user_id == user_id,
-            WanderCoinTransaction.ref_id == activity_id,
-            WanderCoinTransaction.amount > 0,
-            WanderCoinTransaction.tx_type == JOIN_COIN_TX_TYPE,
-            or_(
+def encode_join_ref_id(activity_id: int, round_no: int) -> int:
+    return activity_id * JOIN_REF_MULTIPLIER + round_no
+
+
+def _join_coin_grant_clause(activity_id: int):
+    lo = activity_id * JOIN_REF_MULTIPLIER
+    hi = (activity_id + 1) * JOIN_REF_MULTIPLIER
+    return and_(
+        WanderCoinTransaction.tx_type == JOIN_COIN_TX_TYPE,
+        WanderCoinTransaction.amount > 0,
+        or_(
+            and_(
                 WanderCoinTransaction.ref_type == JOIN_COIN_REF_TYPE,
-                and_(
-                    WanderCoinTransaction.ref_type == JOIN_COIN_REF_TYPE_LEGACY,
-                    WanderCoinTransaction.remark == JOIN_COIN_REMARK,
+                or_(
+                    WanderCoinTransaction.ref_id == activity_id,
+                    and_(
+                        WanderCoinTransaction.ref_id >= lo,
+                        WanderCoinTransaction.ref_id < hi,
+                    ),
                 ),
             ),
-        )
-    )
-    return list(result.scalars().all())
-
-
-async def _find_active_join_point_grants(
-    db: AsyncSession, user_id: int, activity_id: int
-) -> list[PointRecord]:
-    """查找尚未扣回的报名积分发放流水（不含打卡等同 reason 记录）。"""
-    result = await db.execute(
-        select(PointRecord).where(
-            PointRecord.user_id == user_id,
-            PointRecord.ref_id == activity_id,
-            PointRecord.points > 0,
-            PointRecord.reason == JOIN_POINT_REASON,
-            PointRecord.reason_detail == JOIN_POINT_DETAIL,
-            PointRecord.ref_type.in_(
-                (JOIN_POINT_REF_TYPE, JOIN_POINT_REF_TYPE_LEGACY)
+            and_(
+                WanderCoinTransaction.ref_type == JOIN_COIN_REF_TYPE_LEGACY,
+                WanderCoinTransaction.ref_id == activity_id,
+                WanderCoinTransaction.remark == JOIN_COIN_REMARK,
             ),
+        ),
+    )
+
+
+def _join_coin_cancel_clause(activity_id: int):
+    return and_(
+        WanderCoinTransaction.tx_type == CANCEL_COIN_TX_TYPE,
+        WanderCoinTransaction.ref_type == CANCEL_COIN_REF_TYPE,
+        WanderCoinTransaction.ref_id == activity_id,
+        WanderCoinTransaction.amount < 0,
+    )
+
+
+def _join_point_grant_clause(activity_id: int):
+    lo = activity_id * JOIN_REF_MULTIPLIER
+    hi = (activity_id + 1) * JOIN_REF_MULTIPLIER
+    return and_(
+        PointRecord.points > 0,
+        PointRecord.reason == JOIN_POINT_REASON,
+        PointRecord.reason_detail == JOIN_POINT_DETAIL,
+        or_(
+            and_(
+                PointRecord.ref_type == JOIN_POINT_REF_TYPE,
+                or_(
+                    PointRecord.ref_id == activity_id,
+                    and_(PointRecord.ref_id >= lo, PointRecord.ref_id < hi),
+                ),
+            ),
+            and_(
+                PointRecord.ref_type == JOIN_POINT_REF_TYPE_LEGACY,
+                PointRecord.ref_id == activity_id,
+            ),
+        ),
+    )
+
+
+def _join_point_cancel_clause(activity_id: int):
+    return and_(
+        PointRecord.reason == CANCEL_POINT_REASON,
+        PointRecord.ref_type == CANCEL_COIN_REF_TYPE,
+        PointRecord.ref_id == activity_id,
+        PointRecord.points < 0,
+    )
+
+
+async def _join_coin_net(db: AsyncSession, user_id: int, activity_id: int) -> int:
+    grant_sum = await db.scalar(
+        select(func.coalesce(func.sum(WanderCoinTransaction.amount), 0)).where(
+            WanderCoinTransaction.user_id == user_id,
+            _join_coin_grant_clause(activity_id),
         )
     )
-    return list(result.scalars().all())
+    cancel_sum = await db.scalar(
+        select(func.coalesce(func.sum(WanderCoinTransaction.amount), 0)).where(
+            WanderCoinTransaction.user_id == user_id,
+            _join_coin_cancel_clause(activity_id),
+        )
+    )
+    return int(grant_sum or 0) + int(cancel_sum or 0)
+
+
+async def _join_point_net(db: AsyncSession, user_id: int, activity_id: int) -> int:
+    grant_sum = await db.scalar(
+        select(func.coalesce(func.sum(PointRecord.points), 0)).where(
+            PointRecord.user_id == user_id,
+            _join_point_grant_clause(activity_id),
+        )
+    )
+    cancel_sum = await db.scalar(
+        select(func.coalesce(func.sum(PointRecord.points), 0)).where(
+            PointRecord.user_id == user_id,
+            _join_point_cancel_clause(activity_id),
+        )
+    )
+    return int(grant_sum or 0) + int(cancel_sum or 0)
+
+
+async def _next_join_coin_round(db: AsyncSession, user_id: int, activity_id: int) -> int:
+    cnt = await db.scalar(
+        select(func.count(WanderCoinTransaction.id)).where(
+            WanderCoinTransaction.user_id == user_id,
+            _join_coin_grant_clause(activity_id),
+        )
+    )
+    return int(cnt or 0) + 1
+
+
+async def _next_join_point_round(db: AsyncSession, user_id: int, activity_id: int) -> int:
+    cnt = await db.scalar(
+        select(func.count(PointRecord.id)).where(
+            PointRecord.user_id == user_id,
+            _join_point_grant_clause(activity_id),
+        )
+    )
+    return int(cnt or 0) + 1
+
+
+async def _latest_join_coin_tx(
+    db: AsyncSession, user_id: int, activity_id: int
+) -> WanderCoinTransaction | None:
+    return await db.scalar(
+        select(WanderCoinTransaction)
+        .where(
+            WanderCoinTransaction.user_id == user_id,
+            _join_coin_grant_clause(activity_id),
+        )
+        .order_by(WanderCoinTransaction.id.desc())
+        .limit(1)
+    )
+
+
+async def _latest_join_point_record(
+    db: AsyncSession, user_id: int, activity_id: int
+) -> PointRecord | None:
+    return await db.scalar(
+        select(PointRecord)
+        .where(
+            PointRecord.user_id == user_id,
+            _join_point_grant_clause(activity_id),
+        )
+        .order_by(PointRecord.id.desc())
+        .limit(1)
+    )
+
+
+async def grant_enrollment_rewards(
+    db: AsyncSession,
+    user_id: int,
+    activity_id: int,
+) -> dict:
+    """
+    报名发放本轮奖励。若净未扣回余额 > 0（仍占用上一轮奖励），则不再发放。
+    """
+    # 先锁钱包，再算净值，避免连点并发重复发放
+    await get_or_create_wallet(db, user_id, for_update=True)
+    coin_net = await _join_coin_net(db, user_id, activity_id)
+
+    coin_tx_id: int | None = None
+    if coin_net > 0:
+        latest = await _latest_join_coin_tx(db, user_id, activity_id)
+        coin_tx_id = latest.id if latest else None
+        logger.info(
+            "报名晃晃币跳过(仍有未扣回): user_id=%s activity_id=%s net=%s",
+            user_id,
+            activity_id,
+            coin_net,
+        )
+    else:
+        round_no = await _next_join_coin_round(db, user_id, activity_id)
+        tx = await grant_coins(
+            db,
+            user_id,
+            JOIN_REWARD_AMOUNT,
+            tx_type=JOIN_COIN_TX_TYPE,
+            ref_type=JOIN_COIN_REF_TYPE,
+            ref_id=encode_join_ref_id(activity_id, round_no),
+            remark=JOIN_COIN_REMARK,
+        )
+        coin_tx_id = tx.id
+
+    await get_or_create_user_level(db, user_id, for_update=True)
+    point_net = await _join_point_net(db, user_id, activity_id)
+
+    point_record_id: int | None = None
+    if point_net > 0:
+        latest = await _latest_join_point_record(db, user_id, activity_id)
+        point_record_id = latest.id if latest else None
+        logger.info(
+            "报名积分跳过(仍有未扣回): user_id=%s activity_id=%s net=%s",
+            user_id,
+            activity_id,
+            point_net,
+        )
+    else:
+        round_no = await _next_join_point_round(db, user_id, activity_id)
+        record = await add_points(
+            db,
+            user_id,
+            JOIN_REWARD_AMOUNT,
+            reason=JOIN_POINT_REASON,
+            reason_detail=JOIN_POINT_DETAIL,
+            ref_type=JOIN_POINT_REF_TYPE,
+            ref_id=encode_join_ref_id(activity_id, round_no),
+        )
+        point_record_id = record.id
+
+    return {"coin_tx_id": coin_tx_id, "point_record_id": point_record_id}
 
 
 async def revoke_enrollment_rewards(
@@ -79,42 +260,22 @@ async def revoke_enrollment_rewards(
     activity: Activity,
 ) -> dict:
     """
-    用户退出活动时扣除本轮报名奖励
-
-    扣除规则：
-    - 晃晃币：按未扣回的报名发放流水合计扣除
-    - 积分：按未扣回的报名发放流水合计扣除
-    - 删除对应发放流水，使再报名可再次获得奖励
-
-    Returns:
-        扣除统计信息 {"coins": int, "points": int}
+    退出时按净未扣回余额扣除；不删除历史发放流水。
     """
     stats = {"coins": 0, "points": 0}
     reason_prefix = f"退出活动扣除（{activity.title}）"
 
-    coin_grants = await _find_active_join_coin_grants(db, user_id, activity.id)
-    point_grants = await _find_active_join_point_grants(db, user_id, activity.id)
+    await get_or_create_wallet(db, user_id, for_update=True)
+    coin_net = await _join_coin_net(db, user_id, activity.id)
 
-    if not coin_grants and not point_grants:
-        logger.info(
-            "用户 %s 退出活动 %s：无待扣除的报名奖励，跳过",
-            user_id,
-            activity.id,
-        )
-        return stats
-
-    coins_to_revoke = sum(int(g.amount) for g in coin_grants)
-    points_to_revoke = sum(int(p.points) for p in point_grants)
-
-    if coins_to_revoke > 0:
+    if coin_net > 0:
         wallet = await get_or_create_wallet(db, user_id, for_update=True)
-        wallet.balance -= coins_to_revoke
-        wallet.total_spent += coins_to_revoke
-
+        wallet.balance -= coin_net
+        wallet.total_spent += coin_net
         db.add(
             WanderCoinTransaction(
                 user_id=user_id,
-                amount=-coins_to_revoke,
+                amount=-coin_net,
                 balance_after=wallet.balance,
                 tx_type=CANCEL_COIN_TX_TYPE,
                 ref_type=CANCEL_COIN_REF_TYPE,
@@ -123,38 +284,26 @@ async def revoke_enrollment_rewards(
             )
         )
         await db.flush()
-        stats["coins"] = coins_to_revoke
-
-        grant_ids = [g.id for g in coin_grants]
-        await db.execute(
-            delete(WanderCoinTransaction).where(
-                WanderCoinTransaction.id.in_(grant_ids)
-            )
+        stats["coins"] = coin_net
+    else:
+        logger.info(
+            "用户 %s 退出活动 %s：晃晃币无待扣余额(net=%s)",
+            user_id,
+            activity.id,
+            coin_net,
         )
 
-    if points_to_revoke > 0:
-        user_level = await db.scalar(
-            select(UserLevel)
-            .where(UserLevel.user_id == user_id)
-            .with_for_update()
-        )
-        if not user_level:
-            user_level = UserLevel(
-                user_id=user_id,
-                total_points=0,
-                level_code="recruit",
-                level_name="新兵",
-            )
-            db.add(user_level)
-            await db.flush()
+    await get_or_create_user_level(db, user_id, for_update=True)
+    point_net = await _join_point_net(db, user_id, activity.id)
 
+    if point_net > 0:
+        user_level = await get_or_create_user_level(db, user_id, for_update=True)
         points_before = user_level.total_points
-        user_level.total_points -= points_to_revoke
-
+        user_level.total_points -= point_net
         db.add(
             PointRecord(
                 user_id=user_id,
-                points=-points_to_revoke,
+                points=-point_net,
                 points_before=points_before,
                 points_after=user_level.total_points,
                 reason=CANCEL_POINT_REASON,
@@ -164,18 +313,21 @@ async def revoke_enrollment_rewards(
             )
         )
         await db.flush()
-        stats["points"] = points_to_revoke
-
-        grant_ids = [p.id for p in point_grants]
-        await db.execute(
-            delete(PointRecord).where(PointRecord.id.in_(grant_ids))
+        stats["points"] = point_net
+    else:
+        logger.info(
+            "用户 %s 退出活动 %s：积分无待扣余额(net=%s)",
+            user_id,
+            activity.id,
+            point_net,
         )
 
-    logger.info(
-        "用户 %s 退出活动 %s，扣除本轮报名奖励: 晃晃币-%s, 积分-%s",
-        user_id,
-        activity.id,
-        stats["coins"],
-        stats["points"],
-    )
+    if stats["coins"] or stats["points"]:
+        logger.info(
+            "用户 %s 退出活动 %s，扣除本轮报名奖励: 晃晃币-%s, 积分-%s",
+            user_id,
+            activity.id,
+            stats["coins"],
+            stats["points"],
+        )
     return stats

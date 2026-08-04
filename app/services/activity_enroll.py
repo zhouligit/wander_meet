@@ -56,11 +56,14 @@ async def enroll_user_in_activity(
     if int(joined_count or 0) >= activity.max_members:
         raise HTTPException(status_code=409, detail="Activity is full")
 
+    # 行锁：与取消报名串行，避免连点「取消/报名」并发导致重复发扣奖
     existing = await db.scalar(
-        select(ActivityEnrollment).where(
+        select(ActivityEnrollment)
+        .where(
             ActivityEnrollment.activity_id == activity.id,
             ActivityEnrollment.user_id == user_id,
         )
+        .with_for_update()
     )
     if existing:
         if existing.status == "joined":

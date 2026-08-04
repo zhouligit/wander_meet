@@ -145,17 +145,18 @@ async def on_activity_join(
 ) -> dict[str, Any]:
     """报名活动 → 晃晃币+5, 积分+5
 
-    使用独立 ref_type=activity_join，避免与同活动的发布/打卡奖励共用幂等键，
-    并配合 enrollment_cancel_service 支持多轮报名/取消后重新发放。
+    委托 enrollment_cancel_service.grant_enrollment_rewards：
+    保留历史流水、按净未扣回余额发奖，支持多轮且防连点白嫖。
     """
-    return {
-        "coin_tx_id": await _safe_grant_coins(
-            db, user_id, 5, "activity_reward", "activity_join", activity_id, "报名活动奖励",
-        ),
-        "point_record_id": await _safe_add_points(
-            db, user_id, 5, "join_activity", "报名活动", "activity_join", activity_id,
-        ),
-    }
+    from app.services.enrollment_cancel_service import grant_enrollment_rewards
+
+    try:
+        return await grant_enrollment_rewards(db, user_id, activity_id)
+    except Exception:
+        logger.exception(
+            "报名活动奖励发放失败: user=%s activity=%s", user_id, activity_id
+        )
+        return {"coin_tx_id": None, "point_record_id": None}
 
 
 async def on_activity_checkin(
