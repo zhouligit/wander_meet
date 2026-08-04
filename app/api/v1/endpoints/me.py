@@ -744,20 +744,16 @@ async def mark_chat_read(
     )
     last_msg_id = int(last_msg_id or 0)
 
-    row = await db.scalar(
-        select(UserChatRead).where(
-            UserChatRead.user_id == current_user.id, UserChatRead.activity_id == activity_pk
-        )
+    # Use upsert to avoid race condition on concurrent requests
+    from sqlalchemy.dialects.mysql import insert as mysql_insert
+
+    stmt = mysql_insert(UserChatRead).values(
+        user_id=current_user.id,
+        activity_id=activity_pk,
+        last_read_message_id=last_msg_id,
     )
-    if row:
-        row.last_read_message_id = last_msg_id
-    else:
-        row = UserChatRead(
-            user_id=current_user.id,
-            activity_id=activity_pk,
-            last_read_message_id=last_msg_id,
-        )
-        db.add(row)
+    stmt = stmt.on_duplicate_key_update(last_read_message_id=last_msg_id)
+    await db.execute(stmt)
     await db.commit()
     await reset_chat_unread(current_user.id, activity_pk)
     return APIResponse(data={"updatedCount": 1})
