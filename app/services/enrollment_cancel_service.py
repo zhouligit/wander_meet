@@ -326,12 +326,11 @@ async def revoke_enrollment_rewards(
 
     if coin_outstanding > 0:
         wallet = await get_or_create_wallet(db, user_id, for_update=True)
-        actual_deduct = min(coin_outstanding, max(0, wallet.balance))
-        wallet.balance -= actual_deduct
+        wallet.balance -= coin_outstanding
         db.add(
             WanderCoinTransaction(
                 user_id=user_id,
-                amount=-actual_deduct,
+                amount=-coin_outstanding,
                 balance_after=wallet.balance,
                 tx_type=CANCEL_COIN_TX_TYPE,
                 ref_type=CANCEL_COIN_REF_TYPE,
@@ -340,7 +339,7 @@ async def revoke_enrollment_rewards(
             )
         )
         await db.flush()
-        stats["coins"] = actual_deduct
+        stats["coins"] = coin_outstanding
     else:
         logger.info(
             "用户 %s 退出活动 %s：晃晃币无待扣(outstanding=%s)",
@@ -354,10 +353,9 @@ async def revoke_enrollment_rewards(
 
     if point_outstanding > 0:
         user_level = await get_or_create_user_level(db, user_id, for_update=True)
-        actual_point_deduct = min(point_outstanding, max(0, user_level.total_points))
 
         points_before = user_level.total_points
-        points_after = points_before - actual_point_deduct
+        points_after = points_before - point_outstanding
         user_level.total_points = points_after
         level_code, level_name = get_level_by_points(points_after)
         user_level.level_code = level_code
@@ -367,7 +365,7 @@ async def revoke_enrollment_rewards(
         db.add(
             PointRecord(
                 user_id=user_id,
-                points=-actual_point_deduct,
+                points=-point_outstanding,
                 points_before=points_before,
                 points_after=points_after,
                 reason=CANCEL_POINT_REASON,
@@ -377,7 +375,7 @@ async def revoke_enrollment_rewards(
             )
         )
         await db.flush()
-        stats["points"] = actual_point_deduct
+        stats["points"] = point_outstanding
     else:
         logger.info(
             "用户 %s 退出活动 %s：积分无待扣(outstanding=%s)",

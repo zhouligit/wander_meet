@@ -55,9 +55,9 @@ async def _revoke_coins(
     check_ref_type: str | None = None,
     check_ref_id: int | None = None,
 ) -> int:
-    """扣除晃晃币（cap 到 balance，防负数）。返回实际扣除额。"""
+    """扣除晃晃币（允许负数）。返回实际扣除额。"""
     wallet = await get_or_create_wallet(db, user_id, for_update=True)
-    actual = min(amount, max(0, wallet.balance))
+    actual = amount
     if actual <= 0:
         return 0
 
@@ -86,7 +86,7 @@ async def _revoke_points(
     ref_type: str,
     ref_id: int,
 ) -> int:
-    """扣除积分（cap 到 total_points，含等级重算）。返回实际扣除额。"""
+    """扣除积分（允许负数，含等级重算）。返回实际扣除额。"""
     user_level_result = await db.execute(
         select(UserLevel).where(UserLevel.user_id == user_id).with_for_update()
     )
@@ -94,7 +94,7 @@ async def _revoke_points(
     if not user_level:
         return 0
 
-    actual = min(amount, max(0, user_level.total_points))
+    actual = amount
     if actual <= 0:
         return 0
 
