@@ -898,18 +898,28 @@ async def cancel_enrollment(
             detail="Organizer cannot cancel own enrollment; cancel the activity instead",
         )
     enrollment = await db.scalar(
-        select(ActivityEnrollment).where(
+        select(ActivityEnrollment)
+        .where(
             ActivityEnrollment.activity_id == activity_pk,
             ActivityEnrollment.user_id == current_user.id,
             ActivityEnrollment.status == "joined",
         )
+        .with_for_update()
     )
     if not enrollment:
         raise HTTPException(status_code=404, detail="Enrollment not found")
 
-    # 扣除报名奖励（晃晃币-5, 积分-5）
+    # 扣除本轮报名奖励（多轮取消/再报名均可正确扣回，防白嫖）
     from app.services.enrollment_cancel_service import revoke_enrollment_rewards
-    await revoke_enrollment_rewards(db, current_user.id, activity)
+    try:
+        await revoke_enrollment_rewards(db, current_user.id, activity)
+    except Exception:
+        logger.exception(
+            "取消报名扣奖失败: user_id=%s activity_id=%s",
+            current_user.id,
+            activity.id,
+        )
+        raise HTTPException(status_code=500, detail="扣除报名奖励失败，请稍后重试")
 
     enrollment.status = "cancelled"
     await db.commit()

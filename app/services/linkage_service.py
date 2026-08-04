@@ -143,13 +143,17 @@ async def on_activity_publish(
 async def on_activity_join(
     db: AsyncSession, user_id: int, activity_id: int,
 ) -> dict[str, Any]:
-    """报名活动 → 晃晃币+5, 积分+5"""
+    """报名活动 → 晃晃币+5, 积分+5
+
+    使用独立 ref_type=activity_join，避免与同活动的发布/打卡奖励共用幂等键，
+    并配合 enrollment_cancel_service 支持多轮报名/取消后重新发放。
+    """
     return {
         "coin_tx_id": await _safe_grant_coins(
-            db, user_id, 5, "activity_reward", "activity", activity_id, "报名活动奖励",
+            db, user_id, 5, "activity_reward", "activity_join", activity_id, "报名活动奖励",
         ),
         "point_record_id": await _safe_add_points(
-            db, user_id, 5, "join_activity", "报名活动", "activity", activity_id,
+            db, user_id, 5, "join_activity", "报名活动", "activity_join", activity_id,
         ),
     }
 
