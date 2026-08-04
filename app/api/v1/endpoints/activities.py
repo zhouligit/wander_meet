@@ -863,6 +863,8 @@ async def enroll_activity(
             remark="新人任务T3: 报名首个出游活动",
         )
     
+    await db.commit()
+    
     await invalidate_activity_read_caches(
         city_code=activity.city_code, activity_id=activity.id
     )

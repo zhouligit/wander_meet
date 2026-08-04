@@ -70,7 +70,7 @@ async def enroll_user_in_activity(
         existing.status = "joined"
         if norm_name and norm_id:
             apply_enrollment_identity(existing, user, norm_name, norm_id)
-        await db.commit()
+        await db.flush()
         await db.refresh(existing)
         return existing
 
@@ -82,10 +82,6 @@ async def enroll_user_in_activity(
     if norm_name and norm_id:
         apply_enrollment_identity(enrollment, user, norm_name, norm_id)
     db.add(enrollment)
-    try:
-        await db.commit()
-    except IntegrityError as exc:
-        await db.rollback()
-        raise HTTPException(status_code=409, detail="Already enrolled") from exc
+    await db.flush()
     await db.refresh(enrollment)
     return enrollment
