@@ -1,10 +1,12 @@
 """信誉分与等级 API 接口"""
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 
 from app.api.deps import get_current_user
 from app.db.session import get_db_session
 from app.models.user import User
+from app.models.activity import Activity
 from app.services.trust_score import (
     get_trust_score_summary,
     get_trust_score_history,
@@ -76,8 +78,23 @@ async def get_level_history_api(
     """获取积分变动历史"""
     history = await get_point_history(db, current_user.id, limit, offset)
     
-    items = [
-        {
+    # Collect activity IDs to batch-fetch titles
+    activity_ids = set()
+    for record in history:
+        if record.ref_type == "activity" and record.ref_id:
+            activity_ids.add(record.ref_id)
+    
+    # Batch fetch activity titles
+    activity_titles = {}
+    if activity_ids:
+        result = await db.execute(
+            select(Activity.id, Activity.title).where(Activity.id.in_(activity_ids))
+        )
+        activity_titles = {row.id: row.title for row in result.all()}
+    
+    items = []
+    for record in history:
+        item = {
             "id": record.id,
             "points": record.points,
             "points_before": record.points_before,
@@ -88,8 +105,17 @@ async def get_level_history_api(
             "ref_id": record.ref_id,
             "created_at": record.created_at.isoformat() if record.created_at else None,
         }
-        for record in history
-    ]
+        
+        # Enrich display text with activity title based on points direction
+        if record.ref_type == "activity" and record.ref_id:
+            title = activity_titles.get(record.ref_id)
+            if title:
+                if record.points > 0:
+                    item["reason_detail"] = f"发布活动({title})"
+                elif record.points < 0:
+                    item["reason_detail"] = f"活动取消扣除({title})"
+        
+        items.append(item)
     
     return {"code": 0, "message": "success", "data": items}
 

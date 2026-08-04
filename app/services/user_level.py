@@ -1,4 +1,5 @@
 """用户等级服务层"""
+import logging
 from datetime import datetime, timedelta
 from typing import Optional
 
@@ -7,6 +8,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.trust_level import UserLevel, PointRecord
 from app.core.level_config import get_level_by_points, get_next_level
+
+logger = logging.getLogger(__name__)
 
 
 async def get_or_create_user_level(
@@ -41,6 +44,22 @@ async def add_points(
     ref_id: Optional[int] = None,
 ) -> PointRecord:
     """增加用户积分"""
+    # 幂等性检查：防止重复发放
+    if ref_type and ref_id is not None:
+        existing = await db.scalar(
+            select(PointRecord).where(
+                PointRecord.ref_type == ref_type,
+                PointRecord.ref_id == ref_id,
+                PointRecord.reason == reason,
+            )
+        )
+        if existing:
+            logger.info(
+                f"积分幂等拦截: ref_type={ref_type}, ref_id={ref_id}, reason={reason}, "
+                f"已存在 record_id={existing.id}"
+            )
+            return existing
+    
     user_level = await get_or_create_user_level(db, user_id, for_update=True)
     
     points_before = user_level.total_points

@@ -740,7 +740,7 @@ async def create_activity(
     
     # 三体系联动：发布活动奖励
     from app.services.linkage_service import on_activity_publish
-    await on_activity_publish(db, current_user.id, activity.id)
+    await on_activity_publish(db, current_user.id, activity.id, activity.title)
     
     # T5: 发布首个出游活动 → 晃晃币+100
     from app.services.wander_coin_service import grant_coins
@@ -822,7 +822,7 @@ async def enroll_activity(
     # 检查是否是首个报名（排除自己组织的活动）
     enrollment_count = await db.execute(
         select(func.count(ActivityEnrollment.id))
-        .join(Activity)
+        .join(Activity, ActivityEnrollment.activity_id == Activity.id)
         .where(
             ActivityEnrollment.user_id == current_user.id,
             Activity.organizer_id != current_user.id,  # 排除自己组织的
@@ -880,6 +880,10 @@ async def cancel_enrollment(
     )
     if not enrollment:
         raise HTTPException(status_code=404, detail="Enrollment not found")
+
+    # 扣除报名奖励（晃晃币-5, 积分-5）
+    from app.services.enrollment_cancel_service import revoke_enrollment_rewards
+    await revoke_enrollment_rewards(db, current_user.id, activity)
 
     enrollment.status = "cancelled"
     await db.commit()

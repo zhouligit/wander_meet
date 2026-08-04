@@ -126,15 +126,16 @@ async def spend_wander_coins(
 # ---------------------------------------------------------------------------
 
 async def on_activity_publish(
-    db: AsyncSession, user_id: int, activity_id: int,
+    db: AsyncSession, user_id: int, activity_id: int, activity_title: str = "",
 ) -> dict[str, Any]:
     """发布活动 → 晃晃币+10, 积分+10"""
+    title_suffix = f"({activity_title})" if activity_title else ""
     return {
         "coin_tx_id": await _safe_grant_coins(
-            db, user_id, 10, "activity_reward", "activity", activity_id, "发布活动奖励",
+            db, user_id, 10, "activity_reward", "activity", activity_id, f"发布活动奖励{title_suffix}",
         ),
         "point_record_id": await _safe_add_points(
-            db, user_id, 10, "publish_activity", "发布活动", "activity", activity_id,
+            db, user_id, 10, "publish_activity", f"活动发布{title_suffix}", "activity", activity_id,
         ),
     }
 
