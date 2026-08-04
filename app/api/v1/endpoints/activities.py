@@ -740,7 +740,19 @@ async def create_activity(
     
     # 三体系联动：发布活动奖励
     from app.services.linkage_service import on_activity_publish
-    await on_activity_publish(db, current_user.id, activity.id, activity.title)
+    publish_result = await on_activity_publish(db, current_user.id, activity.id, activity.title)
+    
+    # 检查奖励是否成功发放
+    if publish_result.get('coin_tx_id') is None:
+        logger.warning(
+            "发布活动晃晃币奖励失败: user_id=%s activity_id=%s",
+            current_user.id, activity.id
+        )
+    if publish_result.get('point_record_id') is None:
+        logger.warning(
+            "发布活动积分奖励失败: user_id=%s activity_id=%s",
+            current_user.id, activity.id
+        )
     
     # T5: 发布首个出游活动 → 晃晃币+100
     from app.services.wander_coin_service import grant_coins
@@ -814,7 +826,19 @@ async def enroll_activity(
     
     # 三体系联动：报名活动奖励
     from app.services.linkage_service import on_activity_join
-    await on_activity_join(db, current_user.id, activity.id)
+    reward_result = await on_activity_join(db, current_user.id, activity.id)
+    
+    # 检查奖励是否成功发放
+    if reward_result.get('coin_tx_id') is None:
+        logger.warning(
+            "报名活动晃晃币奖励失败: user_id=%s activity_id=%s",
+            current_user.id, activity.id
+        )
+    if reward_result.get('point_record_id') is None:
+        logger.warning(
+            "报名活动积分奖励失败: user_id=%s activity_id=%s",
+            current_user.id, activity.id
+        )
     
     # T3: 报名首个出游活动 → 晃晃币+50
     from app.services.wander_coin_service import grant_coins

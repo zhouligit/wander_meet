@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+
+logger = logging.getLogger(__name__)
 
 from app.api.deps import get_current_user, get_optional_user
 from app.db.session import get_db_session
@@ -362,7 +365,24 @@ async def checkin_activity(
 
     # 三体系联动：活动打卡奖励（晃晃币+15, 信誉分+10, 积分+15）
     from app.services.linkage_service import on_activity_checkin
-    await on_activity_checkin(db, current_user.id, aid)
+    checkin_result = await on_activity_checkin(db, current_user.id, aid)
+    
+    # 检查奖励是否成功发放
+    if checkin_result.get('coin_tx_id') is None:
+        logger.warning(
+            "活动打卡晃晃币奖励失败: user_id=%s activity_id=%s",
+            current_user.id, aid
+        )
+    if checkin_result.get('trust_record_id') is None:
+        logger.warning(
+            "活动打卡信誉分奖励失败: user_id=%s activity_id=%s",
+            current_user.id, aid
+        )
+    if checkin_result.get('point_record_id') is None:
+        logger.warning(
+            "活动打卡积分奖励失败: user_id=%s activity_id=%s",
+            current_user.id, aid
+        )
 
     # P4: 好友首次参加活动 → 邀请人 晃晃币+20, 信誉分+15, 积分+20
     from app.models.growth_trust import ReferralBinding
@@ -382,7 +402,24 @@ async def checkin_activity(
         )
         if (prior_checkins or 0) == 0:
             from app.services.linkage_service import on_referral_first_join
-            await on_referral_first_join(db, binding.inviter_id, current_user.id, aid)
+            referral_result = await on_referral_first_join(db, binding.inviter_id, current_user.id, aid)
+            
+            # 检查奖励是否成功发放
+            if referral_result.get('coin_tx_id') is None:
+                logger.warning(
+                    "好友首次参加晃晃币奖励失败: inviter_id=%s invitee_id=%s activity_id=%s",
+                    binding.inviter_id, current_user.id, aid
+                )
+            if referral_result.get('trust_record_id') is None:
+                logger.warning(
+                    "好友首次参加信誉分奖励失败: inviter_id=%s invitee_id=%s activity_id=%s",
+                    binding.inviter_id, current_user.id, aid
+                )
+            if referral_result.get('point_record_id') is None:
+                logger.warning(
+                    "好友首次参加积分奖励失败: inviter_id=%s invitee_id=%s activity_id=%s",
+                    binding.inviter_id, current_user.id, aid
+                )
 
     await db.commit()
 
@@ -506,10 +543,25 @@ async def submit_meet_review(
         
         # 三体系联动：活动获好评（评价人）→ 积分+2
         from app.services.linkage_service import on_activity_good_review
-        await on_activity_good_review(db, current_user.id, aid)
+        review_result = await on_activity_good_review(db, current_user.id, aid)
+        if review_result.get('point_record_id') is None:
+            logger.warning(
+                "活动获好评积分奖励失败: user_id=%s activity_id=%s",
+                current_user.id, aid
+            )
         
         # 三体系联动：被好评（被评价人）→ 信誉分+20, 积分+5
-        await on_activity_good_review(db, to_uid, aid)
+        reviewed_result = await on_activity_good_review(db, to_uid, aid)
+        if reviewed_result.get('trust_record_id') is None:
+            logger.warning(
+                "被好评信誉分奖励失败: user_id=%s activity_id=%s",
+                to_uid, aid
+            )
+        if reviewed_result.get('point_record_id') is None:
+            logger.warning(
+                "被好评积分奖励失败: user_id=%s activity_id=%s",
+                to_uid, aid
+            )
         await db.commit()
     else:
         # 差评：被评价人信誉分 -15
