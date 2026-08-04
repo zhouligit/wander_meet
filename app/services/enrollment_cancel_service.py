@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from datetime import datetime
 
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -17,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.activity import Activity
 from app.models.trust_level import PointRecord
 from app.models.wander_coin import WanderCoinTransaction
+from app.core.level_config import get_level_by_points
 from app.services.user_level import add_points, get_or_create_user_level
 from app.services.wander_coin_service import get_or_create_wallet, grant_coins
 
@@ -38,6 +40,11 @@ JOIN_POINT_REF_TYPE_LEGACY = "activity"
 CANCEL_COIN_TX_TYPE = "enrollment_cancel_deduct"
 CANCEL_COIN_REF_TYPE = "enrollment_cancel"
 CANCEL_POINT_REASON = "enrollment_cancel_deduct"
+
+# 活动取消（区别于用户主动退出）
+ACTIVITY_CANCEL_COIN_TX_TYPE = "activity_cancel_deduct"
+ACTIVITY_CANCEL_REF_TYPE = "activity_cancel"
+ACTIVITY_CANCEL_POINT_REASON = "activity_cancel_deduct"
 
 
 def encode_join_ref_id(activity_id: int, round_no: int) -> int:
@@ -71,9 +78,12 @@ def _join_coin_grant_clause(activity_id: int):
 
 
 def _join_coin_cancel_clause(activity_id: int):
+    """匹配所有退出/取消类扣除记录（含 enrollment_cancel + activity_cancel + 旧数据）"""
     return and_(
-        WanderCoinTransaction.tx_type == CANCEL_COIN_TX_TYPE,
-        WanderCoinTransaction.ref_type == CANCEL_COIN_REF_TYPE,
+        WanderCoinTransaction.tx_type.in_([
+            CANCEL_COIN_TX_TYPE,              # "enrollment_cancel_deduct"
+            ACTIVITY_CANCEL_COIN_TX_TYPE,     # "activity_cancel_deduct"
+        ]),
         WanderCoinTransaction.ref_id == activity_id,
         WanderCoinTransaction.amount < 0,
     )
@@ -103,9 +113,9 @@ def _join_point_grant_clause(activity_id: int):
 
 
 def _join_point_cancel_clause(activity_id: int):
+    """匹配所有退出/取消类积分扣除记录"""
     return and_(
-        PointRecord.reason == CANCEL_POINT_REASON,
-        PointRecord.ref_type == CANCEL_COIN_REF_TYPE,
+        PointRecord.reason.in_([CANCEL_POINT_REASON, ACTIVITY_CANCEL_POINT_REASON]),
         PointRecord.ref_id == activity_id,
         PointRecord.points < 0,
     )
@@ -316,12 +326,12 @@ async def revoke_enrollment_rewards(
 
     if coin_outstanding > 0:
         wallet = await get_or_create_wallet(db, user_id, for_update=True)
-        wallet.balance -= coin_outstanding
-        wallet.total_spent += coin_outstanding
+        actual_deduct = min(coin_outstanding, max(0, wallet.balance))
+        wallet.balance -= actual_deduct
         db.add(
             WanderCoinTransaction(
                 user_id=user_id,
-                amount=-coin_outstanding,
+                amount=-actual_deduct,
                 balance_after=wallet.balance,
                 tx_type=CANCEL_COIN_TX_TYPE,
                 ref_type=CANCEL_COIN_REF_TYPE,
@@ -330,7 +340,7 @@ async def revoke_enrollment_rewards(
             )
         )
         await db.flush()
-        stats["coins"] = coin_outstanding
+        stats["coins"] = actual_deduct
     else:
         logger.info(
             "用户 %s 退出活动 %s：晃晃币无待扣(outstanding=%s)",
@@ -344,14 +354,22 @@ async def revoke_enrollment_rewards(
 
     if point_outstanding > 0:
         user_level = await get_or_create_user_level(db, user_id, for_update=True)
+        actual_point_deduct = min(point_outstanding, max(0, user_level.total_points))
+
         points_before = user_level.total_points
-        user_level.total_points -= point_outstanding
+        points_after = points_before - actual_point_deduct
+        user_level.total_points = points_after
+        level_code, level_name = get_level_by_points(points_after)
+        user_level.level_code = level_code
+        user_level.level_name = level_name
+        user_level.updated_at = datetime.now()
+
         db.add(
             PointRecord(
                 user_id=user_id,
-                points=-point_outstanding,
+                points=-actual_point_deduct,
                 points_before=points_before,
-                points_after=user_level.total_points,
+                points_after=points_after,
                 reason=CANCEL_POINT_REASON,
                 reason_detail=reason_prefix,
                 ref_type=CANCEL_COIN_REF_TYPE,
@@ -359,7 +377,7 @@ async def revoke_enrollment_rewards(
             )
         )
         await db.flush()
-        stats["points"] = point_outstanding
+        stats["points"] = actual_point_deduct
     else:
         logger.info(
             "用户 %s 退出活动 %s：积分无待扣(outstanding=%s)",
