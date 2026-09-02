@@ -69,19 +69,32 @@ def _read_bos_endpoint(s: Settings) -> str:
 
 
 def build_bce_upload_configuration(settings: Settings | None = None):
-    """上传写 BOS：区域 endpoint，不使用 cname（与 bd.bcebos.com 等官方域名匹配）。"""
+    """上传写 BOS：endpoint 取 ``BOS_ENDPOINT``。
+
+    - 区域域名（如 ``https://bd.bcebos.com``）：``cname_enabled=false``（方式 A）。
+    - CDN/自定义域名：须 ``BOS_CNAME_ENABLED=true``，并建议配 ``BOS_PATH_STYLE_ENABLE``、
+      ``BOS_BACKUP_ENDPOINT``（方式 B）。
+    """
     from baidubce.auth.bce_credentials import BceCredentials
     from baidubce.bce_client_configuration import BceClientConfiguration
 
     s = _require_bos(settings)
-    return BceClientConfiguration(
-        credentials=BceCredentials(
+    endpoint = s.bos_endpoint.strip()
+    use_cname = bool(s.bos_cname_enabled and not _is_regional_bos_endpoint(endpoint))
+    kwargs: dict = {
+        "credentials": BceCredentials(
             s.bos_access_key_id.strip(),
             s.bos_secret_access_key.strip(),
         ),
-        endpoint=s.bos_endpoint.strip(),
-        cname_enabled=False,
-    )
+        "endpoint": endpoint,
+        "cname_enabled": use_cname,
+    }
+    if use_cname and s.bos_path_style_enable:
+        kwargs["path_style_enable"] = True
+    backup = (s.bos_backup_endpoint or "").strip()
+    if backup:
+        kwargs["backup_endpoint"] = backup
+    return BceClientConfiguration(**kwargs)
 
 
 def build_bce_read_configuration(settings: Settings | None = None):

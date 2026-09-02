@@ -1,0 +1,127 @@
+# 草稿：在现有 main.conf 基础上增加 huanghuang.api.yikuaikaixin.cn
+# - 未改动服务器上的 /etc/nginx/sites-available/main.conf
+# - 原文件备份：doc/nginx/main.conf.yikuaikaixin.current.bak
+# - 启用 HTTPS 段前，需先签发证书，例如：
+#   certbot certonly --webroot -w /var/www/letsencrypt \
+#     -d huanghuang.api.yikuaikaixin.cn
+#   若证书目录尚不存在，可先只启用下方「listen 80」段，签发后再打开 443 段。
+
+server {
+    listen 80;
+    server_name wang-hao-hao.cn www.wang-hao-hao.cn;
+
+    location ^~ /.well-known/acme-challenge/ {
+        root /var/www/letsencrypt;
+        default_type "text/plain";
+        try_files $uri =404;
+    }
+
+    location / {
+        return 301 https://www.wang-hao-hao.cn$request_uri;
+    }
+}
+
+# ---------- 旅聚 WanderMeet：yikuaikaixin.cn（保留，过渡期可继续用）----------
+server {
+    server_name yikuaikaixin.cn www.yikuaikaixin.cn;
+
+    location ^~ /.well-known/acme-challenge/ {
+        root /var/www/letsencrypt;
+        default_type "text/plain";
+        try_files $uri =404;
+    }
+
+    location /api/v1/wm/ {
+        proxy_pass http://127.0.0.1:8001;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 120s;
+    }
+
+    location / {
+        return 301 https://yikuaikaixin.cn$request_uri;
+    }
+
+    listen 443 ssl; # managed by Certbot
+    ssl_certificate /etc/letsencrypt/live/yikuaikaixin.cn/fullchain.pem; # managed by Certbot
+    ssl_certificate_key /etc/letsencrypt/live/yikuaikaixin.cn/privkey.pem; # managed by Certbot
+    include /etc/letsencrypt/options-ssl-nginx.conf; # managed by Certbot
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem; # managed by Certbot
+
+
+}
+
+
+server {
+    if ($host = www.yikuaikaixin.cn) {
+        return 301 https://$host$request_uri;
+    } # managed by Certbot
+
+
+    if ($host = yikuaikaixin.cn) {
+        return 301 https://$host$request_uri;
+    } # managed by Certbot
+
+
+    listen 80;
+    server_name yikuaikaixin.cn www.yikuaikaixin.cn;
+    return 404; # managed by Certbot
+
+
+
+
+}
+
+# ---------- 出门晃晃 API：huanghuang.api.yikuaikaixin.cn（新增）----------
+server {
+    listen 80;
+    server_name huanghuang.api.yikuaikaixin.cn;
+
+    location ^~ /.well-known/acme-challenge/ {
+        root /var/www/letsencrypt;
+        default_type "text/plain";
+        try_files $uri =404;
+    }
+
+    location /api/v1/wm/ {
+        proxy_pass http://127.0.0.1:8001;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 120s;
+    }
+
+    location / {
+        return 404;
+    }
+}
+
+server {
+    listen 443 ssl;
+    server_name huanghuang.api.yikuaikaixin.cn;
+
+    # 证书签发后路径一般为：
+    ssl_certificate     /etc/letsencrypt/live/huanghuang.api.yikuaikaixin.cn/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/huanghuang.api.yikuaikaixin.cn/privkey.pem;
+    include /etc/letsencrypt/options-ssl-nginx.conf;
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
+
+    location /api/v1/wm/ {
+        proxy_pass http://127.0.0.1:8001;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 120s;
+    }
+
+    location / {
+        return 404;
+    }
+}
